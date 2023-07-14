@@ -196,12 +196,15 @@ private:
 
 	struct UniformBufferObject
 	{
-		glm::mat4* model;
-		glm::mat4* view;
-		glm::mat4* proj;
+		glm::mat4 view;
+		glm::mat4 proj;
 	};
 
-	UniformBufferObject m_DynamicUBOData;
+	struct DynamicUniformBufferObject
+	{
+		glm::mat4* model;
+	};
+
 	UINT FindSuitableMemoryTypeIndex(UINT typeFilter, VkMemoryPropertyFlags properties);
 
 	void AllocateBufferMemory(VkMemoryPropertyFlags propertyFlags, VkBuffer& buffer, VkDeviceMemory& bufferMemory);
@@ -336,9 +339,13 @@ private:
 	std::unordered_map<VkShaderStageFlagBits, std::filesystem::path> m_mapShaderPath;
 	std::unordered_map<VkShaderStageFlagBits, VkShaderModule> m_mapShaderModule;
 
+	std::vector<VkBuffer> m_vecUniformBuffers;
+	std::vector<VkDeviceMemory> m_vecUniformBufferMemories;
+
 	std::vector<VkBuffer> m_vecDynamicUniformBuffers;
 	std::vector<VkDeviceMemory> m_vecDynamicUniformBufferMemories;
 	size_t m_DynamicAlignment;
+	DynamicUniformBufferObject m_DynamicUboData;
 
 	VkSampler m_TextureSampler;
 

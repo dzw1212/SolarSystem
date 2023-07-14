@@ -23,7 +23,7 @@
 #define TINYOBJLOADER_IMPLEMENTATION
 #include <tiny_obj_loader.h>
 
-#define INSTANCE_NUM 2
+#define INSTANCE_NUM 7
 
 #include "imgui.h"
 #include "UI/UI.h"
@@ -183,6 +183,9 @@ void VulkanRenderer::Clean()
 	vkDestroyDescriptorSetLayout(m_LogicalDevice, m_DescriptorSetLayout, nullptr);
 	for (size_t i = 0; i < m_vecSwapChainImages.size(); ++i)
 	{
+		vkFreeMemory(m_LogicalDevice, m_vecUniformBufferMemories[i], nullptr);
+		vkDestroyBuffer(m_LogicalDevice, m_vecUniformBuffers[i], nullptr);
+
 		vkFreeMemory(m_LogicalDevice, m_vecDynamicUniformBufferMemories[i], nullptr);
 		vkDestroyBuffer(m_LogicalDevice, m_vecDynamicUniformBuffers[i], nullptr);
 	}
@@ -1255,9 +1258,22 @@ void alignedFree(void* data)
 
 void VulkanRenderer::CreateUniformBuffers()
 {
+	m_vecUniformBuffers.resize(m_vecSwapChainImages.size());
+	m_vecUniformBufferMemories.resize(m_vecSwapChainImages.size());
+	for (size_t i = 0; i < m_vecSwapChainImages.size(); ++i)
+	{
+		CreateBufferAndBindMemory(sizeof(UniformBufferObject),
+			VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
+			VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+			m_vecUniformBuffers[i],
+			m_vecUniformBufferMemories[i]
+		);
+	}
+
+
 	auto physicalDeviceProperties = m_mapPhysicalDeviceInfo.at(m_PhysicalDevice).properties;
 	size_t minUboAlignment = physicalDeviceProperties.limits.minUniformBufferOffsetAlignment;
-	m_DynamicAlignment = sizeof(glm::mat4); //model + view + proj
+	m_DynamicAlignment = sizeof(glm::mat4); //model
 	if (minUboAlignment > 0)
 	{
 		m_DynamicAlignment = (m_DynamicAlignment + minUboAlignment - 1) & ~(minUboAlignment - 1);
@@ -1265,14 +1281,12 @@ void VulkanRenderer::CreateUniformBuffers()
 
 	VkDeviceSize dynamicUniformBufferSize = m_DynamicAlignment * INSTANCE_NUM;
 
-	m_DynamicUBOData.model = (glm::mat4*)alignedAlloc(sizeof(glm::mat4), m_DynamicAlignment);
-	m_DynamicUBOData.view = (glm::mat4*)alignedAlloc(sizeof(glm::mat4), m_DynamicAlignment);
-	m_DynamicUBOData.proj = (glm::mat4*)alignedAlloc(sizeof(glm::mat4), m_DynamicAlignment);
+	m_DynamicUboData.model = (glm::mat4*)alignedAlloc(dynamicUniformBufferSize, m_DynamicAlignment);
+	ASSERT(m_DynamicUboData.model, "Allocate dynamic ubo data");
 
 	m_vecDynamicUniformBuffers.resize(m_vecSwapChainImages.size());
 	m_vecDynamicUniformBufferMemories.resize(m_vecSwapChainImages.size());
 
-	//为并行渲染的每一帧图像创建独立的Uniform Buffer
 	for (size_t i = 0; i < m_vecSwapChainImages.size(); ++i)
 	{
 		CreateBufferAndBindMemory(dynamicUniformBufferSize, 
@@ -1540,15 +1554,23 @@ void VulkanRenderer::CreateDescriptorSetLayout()
 {
 	//UniformBufferObject Binding
 	VkDescriptorSetLayoutBinding uboLayoutBinding{};
-	uboLayoutBinding.binding = 0; //对应Vertex Shader中的layout(binding=0)
+	uboLayoutBinding.binding = 0; //对应Vertex Shader中的layout binding
 	uboLayoutBinding.descriptorCount = 1;
-	uboLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;	//类型为Dynamic Uniform Buffer
+	uboLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
 	uboLayoutBinding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT; //只需要在vertex stage生效
 	uboLayoutBinding.pImmutableSamplers = nullptr;
 
+	//Dynamic UniformBufferObject Binding
+	VkDescriptorSetLayoutBinding dynamicUboLayoutBinding{};
+	dynamicUboLayoutBinding.binding = 1; //对应Vertex Shader中的layout binding
+	dynamicUboLayoutBinding.descriptorCount = 1;
+	dynamicUboLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
+	dynamicUboLayoutBinding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT; //只需要在vertex stage生效
+	dynamicUboLayoutBinding.pImmutableSamplers = nullptr;
+
 	//CombinedImageSampler Binding
 	VkDescriptorSetLayoutBinding samplerLayoutBinding{};
-	samplerLayoutBinding.binding = 1; ////对应Fragment Shader中的layout(binding=1)
+	samplerLayoutBinding.binding = 2; ////对应Fragment Shader中的layout binding
 	samplerLayoutBinding.descriptorCount = 1;
 	samplerLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
 	samplerLayoutBinding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT; //只用于fragment stage
@@ -1556,6 +1578,7 @@ void VulkanRenderer::CreateDescriptorSetLayout()
 
 	std::vector<VkDescriptorSetLayoutBinding> vecDescriptorLayoutBinding = {
 		uboLayoutBinding,
+		dynamicUboLayoutBinding,
 		samplerLayoutBinding,
 	};
 
@@ -1571,8 +1594,13 @@ void VulkanRenderer::CreateDescriptorPool()
 {
 	//ubo
 	VkDescriptorPoolSize uboPoolSize{};
-	uboPoolSize.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
+	uboPoolSize.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
 	uboPoolSize.descriptorCount = static_cast<UINT>(m_vecSwapChainImages.size());
+
+	//dynamic ubo
+	VkDescriptorPoolSize dynamicUboPoolSize{};
+	dynamicUboPoolSize.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
+	dynamicUboPoolSize.descriptorCount = static_cast<UINT>(m_vecSwapChainImages.size());
 
 	//sampler
 	VkDescriptorPoolSize samplerPoolSize{};
@@ -1581,6 +1609,7 @@ void VulkanRenderer::CreateDescriptorPool()
 
 	std::vector<VkDescriptorPoolSize> vecPoolSize = {
 		uboPoolSize,
+		dynamicUboPoolSize,
 		samplerPoolSize,
 	};
 
@@ -1609,19 +1638,34 @@ void VulkanRenderer::CreateDescriptorSets()
 	for (size_t i = 0; i < m_vecSwapChainImages.size(); ++i)
 	{
 		//ubo
-		VkDescriptorBufferInfo bufferInfo{};
-		bufferInfo.buffer = m_vecDynamicUniformBuffers[i];
-		bufferInfo.offset = 0;
-		bufferInfo.range = sizeof(UniformBufferObject);
+		VkDescriptorBufferInfo descriptorBufferInfo{};
+		descriptorBufferInfo.buffer = m_vecUniformBuffers[i];
+		descriptorBufferInfo.offset = 0;
+		descriptorBufferInfo.range = sizeof(UniformBufferObject);
 
 		VkWriteDescriptorSet uboWrite{};
 		uboWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
 		uboWrite.dstSet = m_vecDescriptorSets[i];
 		uboWrite.dstBinding = 0;
 		uboWrite.dstArrayElement = 0;
-		uboWrite.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
+		uboWrite.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
 		uboWrite.descriptorCount = 1;
-		uboWrite.pBufferInfo = &bufferInfo;
+		uboWrite.pBufferInfo = &descriptorBufferInfo;
+
+		//dynamic ubo
+		VkDescriptorBufferInfo dynamicDescriptorBufferInfo{};
+		dynamicDescriptorBufferInfo.buffer = m_vecDynamicUniformBuffers[i];
+		dynamicDescriptorBufferInfo.offset = 0;
+		dynamicDescriptorBufferInfo.range = 64;
+
+		VkWriteDescriptorSet dynamicUboWrite{};
+		dynamicUboWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+		dynamicUboWrite.dstSet = m_vecDescriptorSets[i];
+		dynamicUboWrite.dstBinding = 1;
+		dynamicUboWrite.dstArrayElement = 0;
+		dynamicUboWrite.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
+		dynamicUboWrite.descriptorCount = 1;
+		dynamicUboWrite.pBufferInfo = &dynamicDescriptorBufferInfo;
 
 		//sampler
 		VkDescriptorImageInfo imageInfo{};
@@ -1632,7 +1676,7 @@ void VulkanRenderer::CreateDescriptorSets()
 		VkWriteDescriptorSet samplerWrite{};
 		samplerWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
 		samplerWrite.dstSet = m_vecDescriptorSets[i];
-		samplerWrite.dstBinding = 1;
+		samplerWrite.dstBinding = 2;
 		samplerWrite.dstArrayElement = 0;
 		samplerWrite.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
 		samplerWrite.descriptorCount = 1;
@@ -1640,6 +1684,7 @@ void VulkanRenderer::CreateDescriptorSets()
 
 		std::vector<VkWriteDescriptorSet> vecDescriptorWrite = {
 			uboWrite,
+			dynamicUboWrite,
 			samplerWrite,
 		};
 
@@ -2037,39 +2082,27 @@ void VulkanRenderer::UpdateUniformBuffer(UINT uiIdx)
 
 	////time = 1.f;
 
-	auto AxisX = glm::vec3(1.f, 0.f, 0.f);
-	auto AxisY = glm::vec3(0.f, 1.f, 0.f);
-	auto AxisZ = glm::vec3(0.f, 0.f, 1.f);
-
 	UniformBufferObject ubo{};
-
-	std::vector<glm::mat4> vecModelMat;
-	for (UINT i = 0; i < INSTANCE_NUM; ++i)
-	{
-		float x = static_cast<float>(i);
-		vecModelMat.push_back(glm::translate(glm::mat4(1.f), { x, 0.f, 0.f }));
-	}
-
-	std::vector<glm::mat4> vecViewMat;
-	vecViewMat.resize(INSTANCE_NUM, m_Camera.GetViewMatrix());
-
-	std::vector<glm::mat4> vecProjMat;
-	vecProjMat.resize(INSTANCE_NUM, m_Camera.GetProjMatrix());
-
-	ubo.model = vecModelMat.data();
-	ubo.view = vecViewMat.data();
-	ubo.proj = vecProjMat.data();
+	ubo.view = m_Camera.GetViewMatrix();
+	ubo.proj = m_Camera.GetProjMatrix();
 	//OpenGL与Vulkan的差异 - Y坐标是反的
-	//ubo.proj[1][1] *= -1.f;
-
-	//void* uniformBufferData;
-	//vkMapMemory(m_LogicalDevice, m_vecDynamicUniformBufferMemories[uiIdx], 0, m_DynamicAlignment * INSTANCE_NUM, 0, &uniformBufferData);
-	//memcpy(uniformBufferData, &ubo, m_DynamicAlignment * INSTANCE_NUM);
-	//vkUnmapMemory(m_LogicalDevice, m_vecDynamicUniformBufferMemories[uiIdx]);
+	ubo.proj[1][1] *= -1.f;
 
 	void* uniformBufferData;
-	vkMapMemory(m_LogicalDevice, m_vecDynamicUniformBufferMemories[uiIdx], 0, sizeof(ubo), 0, &uniformBufferData);
+	vkMapMemory(m_LogicalDevice, m_vecUniformBufferMemories[uiIdx], 0, sizeof(ubo), 0, &uniformBufferData);
 	memcpy(uniformBufferData, &ubo, sizeof(ubo));
+	vkUnmapMemory(m_LogicalDevice, m_vecUniformBufferMemories[uiIdx]);
+
+	glm::mat4* pModelMat = nullptr;
+	for (UINT i = 0; i < INSTANCE_NUM; ++i)
+	{
+		pModelMat = (glm::mat4*)(((uint64_t)m_DynamicUboData.model + (i * m_DynamicAlignment)));
+		*pModelMat = glm::translate(glm::mat4(1.f), { i * 1.25f, 0.f, 0.f });
+	}
+
+	void* dynamicUniformBufferData;
+	vkMapMemory(m_LogicalDevice, m_vecDynamicUniformBufferMemories[uiIdx], 0, m_DynamicAlignment * INSTANCE_NUM, 0, &dynamicUniformBufferData);
+	memcpy(dynamicUniformBufferData, m_DynamicUboData.model, m_DynamicAlignment * INSTANCE_NUM);
 	vkUnmapMemory(m_LogicalDevice, m_vecDynamicUniformBufferMemories[uiIdx]);
 }
 
@@ -2114,11 +2147,11 @@ void VulkanRenderer::Render()
 
 	vkResetCommandBuffer(m_vecCommandBuffers[m_uiCurFrameIdx], 0);
 
+	UpdateUniformBuffer(m_uiCurFrameIdx);
+
 	RecordCommandBuffer(m_vecCommandBuffers[m_uiCurFrameIdx], uiImageIdx);
 
 	auto uiCommandBuffer = g_UI.FillCommandBuffer(m_uiCurFrameIdx);
-
-	UpdateUniformBuffer(m_uiCurFrameIdx);
 
 	VkSubmitInfo submitInfo{};
 	submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
