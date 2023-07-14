@@ -200,6 +200,8 @@ private:
 		glm::mat4* view;
 		glm::mat4* proj;
 	};
+
+	UniformBufferObject m_DynamicUBOData;
 	UINT FindSuitableMemoryTypeIndex(UINT typeFilter, VkMemoryPropertyFlags properties);
 
 	void AllocateBufferMemory(VkMemoryPropertyFlags propertyFlags, VkBuffer& buffer, VkDeviceMemory& bufferMemory);

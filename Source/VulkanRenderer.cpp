@@ -1228,17 +1228,46 @@ void VulkanRenderer::CreateBufferAndBindMemory(VkDeviceSize deviceSize, VkBuffer
 	vkBindBufferMemory(m_LogicalDevice, buffer, bufferMemory, 0);
 }
 
+
+// Wrapper functions for aligned memory allocation
+// There is currently no standard for this in C++ that works across all platforms and vendors, so we abstract this
+void* alignedAlloc(size_t size, size_t alignment)
+{
+	void* data = nullptr;
+#if defined(_MSC_VER) || defined(__MINGW32__)
+	data = _aligned_malloc(size, alignment);
+#else
+	int res = posix_memalign(&data, alignment, size);
+	if (res != 0)
+		data = nullptr;
+#endif
+	return data;
+}
+
+void alignedFree(void* data)
+{
+#if	defined(_MSC_VER) || defined(__MINGW32__)
+	_aligned_free(data);
+#else
+	free(data);
+#endif
+}
+
 void VulkanRenderer::CreateUniformBuffers()
 {
 	auto physicalDeviceProperties = m_mapPhysicalDeviceInfo.at(m_PhysicalDevice).properties;
 	size_t minUboAlignment = physicalDeviceProperties.limits.minUniformBufferOffsetAlignment;
-	m_DynamicAlignment = sizeof(glm::mat4) * 3; //model + view + proj
+	m_DynamicAlignment = sizeof(glm::mat4); //model + view + proj
 	if (minUboAlignment > 0)
 	{
 		m_DynamicAlignment = (m_DynamicAlignment + minUboAlignment - 1) & ~(minUboAlignment - 1);
 	}
 
 	VkDeviceSize dynamicUniformBufferSize = m_DynamicAlignment * INSTANCE_NUM;
+
+	m_DynamicUBOData.model = (glm::mat4*)alignedAlloc(sizeof(glm::mat4), m_DynamicAlignment);
+	m_DynamicUBOData.view = (glm::mat4*)alignedAlloc(sizeof(glm::mat4), m_DynamicAlignment);
+	m_DynamicUBOData.proj = (glm::mat4*)alignedAlloc(sizeof(glm::mat4), m_DynamicAlignment);
 
 	m_vecDynamicUniformBuffers.resize(m_vecSwapChainImages.size());
 	m_vecDynamicUniformBufferMemories.resize(m_vecSwapChainImages.size());
