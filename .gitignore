@@ -1,0 +1,12 @@
+.git/
+.vs/
+Log/
+bin/
+obj/
+Submodule/
+Assert/Model/
+Assert/Texture/
+*.sln
+*.vcxproj
+*.vcxproj.user
+*.vcxproj.filters
