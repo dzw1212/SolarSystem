@@ -10,6 +10,8 @@
 #include "Core.h"
 #include "Camera.h"
 
+#include "VulkanWrap.h"
+
 struct Vertex3D
 {
 	glm::vec3 pos;
@@ -178,7 +180,7 @@ private:
 
 	VkSurfaceFormatKHR ChooseUISwapChainSurfaceFormat(const std::vector<VkSurfaceFormatKHR>& vecAvailableFormats);
 
-	VkImageView CreateImageView(VkImage image, VkFormat format, VkImageAspectFlags aspectFlags, UINT uiMipLevel);
+	VkImageView CreateImageView(VkImage image, VkFormat format, VkImageAspectFlags aspectFlags, UINT uiMipLevelCount, UINT uiLayerCount);
 	void CreateSwapChainImages();
 	void CreateSwapChainImageViews();
 	void CreateSwapChainFrameBuffers();
@@ -198,6 +200,7 @@ private:
 	{
 		glm::mat4 view;
 		glm::mat4 proj;
+		float lod = 0.f;
 	};
 
 	struct DynamicUniformBufferObject
@@ -221,10 +224,10 @@ private:
 		VkImageTiling tiling, VkImageUsageFlags usage, VkMemoryPropertyFlags properties,
 		VkImage& image, VkDeviceMemory& imageMemory);
 	bool CheckFormatHasStencilComponent(VkFormat format);
-	void ChangeImageLayout(VkImage image, VkFormat format, uint32_t uiMipLevel, VkImageLayout oldLayout, VkImageLayout newLayout);
-	void TransferImageDataByStageBuffer(void* pData, VkDeviceSize imageSize, VkImage& image,  UINT uiWidth, UINT uiHeight);
-	void CreateTextureImageAndFillData();
-	void CreateTextureImageView();
+	void ChangeImageLayout(VkImage image, VkFormat format, UINT uiMipLevelCount, UINT uiLayerCount, VkImageLayout oldLayout, VkImageLayout newLayout);
+	void TransferImageDataByStageBuffer(void* pData, VkDeviceSize imageSize, VkImage& image, UINT uiWidth, UINT uiHeight, DZW_VulkanWrap::Texture& texture, ktxTexture* pKtxTexture);
+	//void CreateTextureImageAndFillData();
+	//void CreateTextureImageView();
 
 	void CreateDescriptorSetLayout();
 	void CreateDescriptorPool();
@@ -249,6 +252,9 @@ private:
 	void Render();
 
 	void RecreateSwapChain();
+
+private:
+	DZW_VulkanWrap::Texture& LoadTexture(const std::filesystem::path& filepath);
 
 public:
 	Camera m_Camera;
@@ -282,6 +288,9 @@ public:
 	VkPipeline& GetPipeline() { return m_GraphicPipeline; }
 
 	PhysicalDeviceInfo& GetPhysicalDeviceInfo() { return m_mapPhysicalDeviceInfo.at(m_PhysicalDevice); }
+
+
+	void SetTextureLod(float fLod) { m_UboData.lod = fLod; }
 
 private:
 	UINT m_uiWindowWidth;
@@ -341,6 +350,7 @@ private:
 
 	std::vector<VkBuffer> m_vecUniformBuffers;
 	std::vector<VkDeviceMemory> m_vecUniformBufferMemories;
+	UniformBufferObject m_UboData;
 
 	std::vector<VkBuffer> m_vecDynamicUniformBuffers;
 	std::vector<VkDeviceMemory> m_vecDynamicUniformBufferMemories;
@@ -349,11 +359,7 @@ private:
 
 	VkSampler m_TextureSampler;
 
-	UINT m_uiMipmapLevel;
-	std::filesystem::path m_TexturePath;
-	VkImage m_TextureImage;
-	VkDeviceMemory m_TextureImageMemory;
-	VkImageView m_TextureImageView;
+	DZW_VulkanWrap::Texture m_Texture;
 
 	VkDescriptorSetLayout m_DescriptorSetLayout;
 	VkDescriptorPool m_DescriptorPool;

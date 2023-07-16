@@ -23,12 +23,14 @@
 #define TINYOBJLOADER_IMPLEMENTATION
 #include <tiny_obj_loader.h>
 
+#include "ktx.h"
+#include "ktxvulkan.h"
+
 #define INSTANCE_NUM 7
 
 #include "imgui.h"
 #include "UI/UI.h"
 static UI g_UI;
-
 
 VulkanRenderer::VulkanRenderer()
 {
@@ -52,11 +54,9 @@ VulkanRenderer::VulkanRenderer()
 	//m_TexturePath = "./Assert/Texture/Earth/8081_earthmap4k.jpg";
 	//m_TexturePath = "./Assert/Texture/Earth2/8k_earth_daymap.jpg";
 	//m_TexturePath = "./Assert/Texture/Earth2/8k_earth_clouds.jpg";
-	m_TexturePath = "./Assert/Texture/viking_room.png";
+	//m_TexturePath = "./Assert/Texture/metalplate01_rgba.ktx";
 
 	m_ModelPath = "./Assert/Model/viking_room.obj";
-
-	m_uiMipmapLevel = 1;
 
 	m_bViewportAndScissorIsDynamic = false;
 
@@ -93,10 +93,15 @@ void VulkanRenderer::Init()
 
 	CreateShader();
 	CreateUniformBuffers();
-	CreateTextureSampler();
+	
 
-	CreateTextureImageAndFillData();
-	CreateTextureImageView();
+	//CreateTextureImageAndFillData();
+	//CreateTextureImageView();
+
+	//m_Texture = LoadTexture("./Assert/Texture/viking_room.png");
+	m_Texture = LoadTexture("./Assert/Texture/texturearray_rgba.ktx");
+
+	CreateTextureSampler();
 
 	CreateDescriptorSetLayout();
 	CreateDescriptorPool();
@@ -174,9 +179,10 @@ void VulkanRenderer::Clean()
 	vkDestroySwapchainKHR(m_LogicalDevice, m_SwapChain, nullptr);
 
 	vkDestroySampler(m_LogicalDevice, m_TextureSampler, nullptr);
-	vkDestroyImageView(m_LogicalDevice, m_TextureImageView, nullptr);
-	vkDestroyImage(m_LogicalDevice, m_TextureImage, nullptr);
-	vkFreeMemory(m_LogicalDevice, m_TextureImageMemory, nullptr);
+
+	vkDestroyImageView(m_LogicalDevice, m_Texture.m_ImageView, nullptr);
+	vkDestroyImage(m_LogicalDevice, m_Texture.m_Image, nullptr);
+	vkFreeMemory(m_LogicalDevice, m_Texture.m_Memory, nullptr);
 
 	vkDestroyDescriptorPool(m_LogicalDevice, m_DescriptorPool, nullptr);
 
@@ -617,7 +623,7 @@ void VulkanRenderer::QueryAllValidPhysicalDevice()
 			vkGetPhysicalDeviceQueueFamilyProperties(physicalDevice, &uiQueueFamilyCount, info.vecQueueFamilies.data());
 		}
 
-		info.strDeviceTypeName = VulkanUtils::GetPhysicalDeviceTypeName(info.properties.deviceType);
+		info.strDeviceTypeName = DZW_VulkanUtils::GetPhysicalDeviceTypeName(info.properties.deviceType);
 
 		int nIdx = 0;
 		for (const auto& queueFamily : info.vecQueueFamilies)
@@ -908,7 +914,7 @@ void VulkanRenderer::CreateSwapChain()
 	VULKAN_ASSERT(vkCreateSwapchainKHR(m_LogicalDevice, &createInfo, nullptr, &m_SwapChain), "Create swap chain failed");
 }
 
-VkImageView VulkanRenderer::CreateImageView(VkImage image, VkFormat format, VkImageAspectFlags aspectFlags, UINT uiMipLevel)
+VkImageView VulkanRenderer::CreateImageView(VkImage image, VkFormat format, VkImageAspectFlags aspectFlags, UINT uiMipLevelCount, UINT uiLayerCount)
 {
 	VkImageViewCreateInfo createInfo{};
 	createInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
@@ -917,9 +923,9 @@ VkImageView VulkanRenderer::CreateImageView(VkImage image, VkFormat format, VkIm
 	createInfo.format = format;
 	createInfo.subresourceRange.aspectMask = aspectFlags;
 	createInfo.subresourceRange.baseMipLevel = 0;
-	createInfo.subresourceRange.levelCount = uiMipLevel;
+	createInfo.subresourceRange.levelCount = uiMipLevelCount;
 	createInfo.subresourceRange.baseArrayLayer = 0;
-	createInfo.subresourceRange.layerCount = 1;
+	createInfo.subresourceRange.layerCount = uiLayerCount;
 
 	VkImageView imageView;
 	VULKAN_ASSERT(vkCreateImageView(m_LogicalDevice, &createInfo, nullptr, &imageView), "Create image view failed");
@@ -941,7 +947,7 @@ void VulkanRenderer::CreateSwapChainImageViews()
 	m_vecSwapChainImageViews.resize(m_vecSwapChainImages.size());
 	for (UINT i = 0; i < m_vecSwapChainImageViews.size(); ++i)
 	{
-		m_vecSwapChainImageViews[i] = CreateImageView(m_vecSwapChainImages[i], m_SwapChainFormat, VK_IMAGE_ASPECT_COLOR_BIT, 1);
+		m_vecSwapChainImageViews[i] = CreateImageView(m_vecSwapChainImages[i], m_SwapChainFormat, VK_IMAGE_ASPECT_COLOR_BIT, 1, 1);
 	}
 }
 
@@ -957,9 +963,9 @@ void VulkanRenderer::CreateSwapChainFrameBuffers()
 		VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
 		m_DepthImage, m_DepthImageMemory);
 
-	m_DepthImageView = CreateImageView(m_DepthImage, m_DepthFormat, VK_IMAGE_ASPECT_DEPTH_BIT, 1);
+	m_DepthImageView = CreateImageView(m_DepthImage, m_DepthFormat, VK_IMAGE_ASPECT_DEPTH_BIT, 1, 1);
 
-	ChangeImageLayout(m_DepthImage, m_DepthFormat, 1,
+	ChangeImageLayout(m_DepthImage, m_DepthFormat, 1, 1,
 		VK_IMAGE_LAYOUT_UNDEFINED, 
 		VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL);
 
@@ -1331,7 +1337,7 @@ void VulkanRenderer::CreateTextureSampler()
 	createInfo.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
 	createInfo.mipLodBias = 0.f;
 	createInfo.minLod = 0.f;
-	createInfo.maxLod = 0.f;
+	createInfo.maxLod = static_cast<float>(m_Texture.m_uiMipLevelNum);
 
 	VULKAN_ASSERT(vkCreateSampler(m_LogicalDevice, &createInfo, nullptr, &m_TextureSampler), "Create texture sampler failed");
 }
@@ -1385,7 +1391,7 @@ bool VulkanRenderer::CheckFormatHasStencilComponent(VkFormat format)
 	return false;
 }
 
-void VulkanRenderer::ChangeImageLayout(VkImage image, VkFormat format, uint32_t uiMipLevel, VkImageLayout oldLayout, VkImageLayout newLayout)
+void VulkanRenderer::ChangeImageLayout(VkImage image, VkFormat format, UINT uiMipLevelCount, UINT uiLayerCount, VkImageLayout oldLayout, VkImageLayout newLayout)
 {
 	VkCommandBuffer singleTimeCommandBuffer = BeginSingleTimeCommand();
 
@@ -1401,9 +1407,9 @@ void VulkanRenderer::ChangeImageLayout(VkImage image, VkFormat format, uint32_t 
 	barrier.image = image;
 	barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
 	barrier.subresourceRange.baseMipLevel = 0;
-	barrier.subresourceRange.levelCount = uiMipLevel;
+	barrier.subresourceRange.levelCount = uiMipLevelCount;
 	barrier.subresourceRange.baseArrayLayer = 0;
-	barrier.subresourceRange.layerCount = 1;
+	barrier.subresourceRange.layerCount = uiLayerCount;
 	//指定barrier之前必须发生的资源操作类型，和barrier之后必须等待的资源操作类型
 	//需要根据oldLayout和newLayout的类型来决定
 	barrier.srcAccessMask = 0;
@@ -1462,8 +1468,17 @@ void VulkanRenderer::ChangeImageLayout(VkImage image, VkFormat format, uint32_t 
 	EndSingleTimeCommand(singleTimeCommandBuffer);
 }
 
-void VulkanRenderer::TransferImageDataByStageBuffer(void* pData, VkDeviceSize imageSize, VkImage& image, UINT uiWidth, UINT uiHeight)
+void VulkanRenderer::TransferImageDataByStageBuffer(void* pData, VkDeviceSize imageSize, VkImage& image, UINT uiWidth, UINT uiHeight, DZW_VulkanWrap::Texture& texture, ktxTexture* pKtxTexture)
 {
+	if (texture.IsKtxTexture())
+	{
+		ASSERT(pKtxTexture);
+	}
+	else
+	{
+		ASSERT(texture.m_uiFaceNum == 1 && texture.m_uiLayerNum == 1 && texture.m_uiMipLevelNum == 1);
+	}
+
 	VkBuffer stagingBuffer;
 	VkDeviceMemory stagingBufferMemory;
 
@@ -1472,27 +1487,59 @@ void VulkanRenderer::TransferImageDataByStageBuffer(void* pData, VkDeviceSize im
 		stagingBuffer, stagingBufferMemory);
 
 	void* imageData;
-	vkMapMemory(m_LogicalDevice, stagingBufferMemory, 0, imageSize, 0, &imageData);
+	vkMapMemory(m_LogicalDevice, stagingBufferMemory, 0, imageSize, 0, (void**)&imageData);
 	memcpy(imageData, pData, static_cast<size_t>(imageSize));
 	vkUnmapMemory(m_LogicalDevice, stagingBufferMemory);
 
 	VkCommandBuffer singleTimeCommandBuffer = BeginSingleTimeCommand();
 
-	VkBufferImageCopy region{};
-	//指定要复制的数据在buffer中的偏移量
-	region.bufferOffset = 0;
-	//指定数据在memory中的存放方式，用于对齐
-	//若都为0，则数据在memory中会紧凑存放
-	region.bufferRowLength = 0;
-	region.bufferImageHeight = 0;
-	//指定数据被复制到image的哪一部分
-	region.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-	region.imageSubresource.mipLevel = 0;
-	region.imageSubresource.baseArrayLayer = 0;
-	region.imageSubresource.layerCount = 1;
-	region.imageOffset = { 0, 0, 0 };
-	region.imageExtent = { uiWidth, uiHeight, 1 };
-	vkCmdCopyBufferToImage(singleTimeCommandBuffer, stagingBuffer, image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region);
+	if (texture.IsKtxTexture())
+	{
+		std::vector<VkBufferImageCopy> vecBufferCopyRegions;
+		for (UINT face = 0; face < texture.m_uiFaceNum; ++face)
+		{
+			for (UINT layer = 0; layer < texture.m_uiLayerNum; ++layer)
+			{
+				for (UINT mipLevel = 0; mipLevel < texture.m_uiMipLevelNum; ++mipLevel)
+				{
+					size_t offset;
+					KTX_error_code ret = ktxTexture_GetImageOffset(pKtxTexture, mipLevel, layer, face, &offset);
+					ASSERT(ret == KTX_SUCCESS);
+					VkBufferImageCopy bufferCopyRegion = {};
+					bufferCopyRegion.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+					bufferCopyRegion.imageSubresource.mipLevel = mipLevel;
+					bufferCopyRegion.imageSubresource.baseArrayLayer = layer * 6 + face;
+					bufferCopyRegion.imageSubresource.layerCount = 1;
+					bufferCopyRegion.imageExtent.width = uiWidth >> mipLevel;
+					bufferCopyRegion.imageExtent.height = uiHeight >> mipLevel;
+					bufferCopyRegion.imageExtent.depth = 1;
+					bufferCopyRegion.bufferOffset = offset;
+					vecBufferCopyRegions.push_back(bufferCopyRegion);
+				}
+			}
+		}
+
+		vkCmdCopyBufferToImage(singleTimeCommandBuffer, stagingBuffer, image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+			static_cast<UINT>(vecBufferCopyRegions.size()), vecBufferCopyRegions.data());
+	}
+	else
+	{
+		VkBufferImageCopy region{};
+		//指定要复制的数据在buffer中的偏移量
+		region.bufferOffset = 0;
+		//指定数据在memory中的存放方式，用于对齐
+		//若都为0，则数据在memory中会紧凑存放
+		region.bufferRowLength = 0;
+		region.bufferImageHeight = 0;
+		//指定数据被复制到image的哪一部分
+		region.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+		region.imageSubresource.mipLevel = 0;
+		region.imageSubresource.baseArrayLayer = 0;
+		region.imageSubresource.layerCount = 1;
+		region.imageOffset = { 0, 0, 0 };
+		region.imageExtent = { uiWidth, uiHeight, 1 };
+		vkCmdCopyBufferToImage(singleTimeCommandBuffer, stagingBuffer, image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region);
+	}
 
 	EndSingleTimeCommand(singleTimeCommandBuffer);
 
@@ -1500,55 +1547,66 @@ void VulkanRenderer::TransferImageDataByStageBuffer(void* pData, VkDeviceSize im
 	vkFreeMemory(m_LogicalDevice, stagingBufferMemory, nullptr);
 }
 
-void VulkanRenderer::CreateTextureImageAndFillData()
-{
-	int nTexWidth = 0;
-	int nTexHeight = 0;
-	int nTexChannel = 0;
-	stbi_uc* pixels = stbi_load(m_TexturePath.string().c_str(), &nTexWidth, &nTexHeight, &nTexChannel, STBI_rgb_alpha);
-	ASSERT(pixels, std::format("Stb load image {} failed", m_TexturePath.string()));
-
-	VkDeviceSize imageSize = (uint64_t)nTexWidth * (uint64_t)nTexHeight * 4;
-
-	CreateImageAndBindMemory(nTexWidth, nTexHeight, m_uiMipmapLevel,
-		VK_SAMPLE_COUNT_1_BIT,
-		VK_FORMAT_R8G8B8A8_SRGB,
-		VK_IMAGE_TILING_OPTIMAL,
-		VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
-		VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
-		m_TextureImage, m_TextureImageMemory);
-
-	//copy之前，将layout从初始的undefined转为transfer dst
-	ChangeImageLayout(m_TextureImage,
-		VK_FORMAT_R8G8B8A8_SRGB,				//image format
-		m_uiMipmapLevel,						//mipmap level
-		VK_IMAGE_LAYOUT_UNDEFINED,				//src layout
-		VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);	//dst layout
-
-	TransferImageDataByStageBuffer(pixels, imageSize, m_TextureImage, static_cast<UINT>(nTexWidth), static_cast<UINT>(nTexHeight));
-
-	//transfer之后，将layout从transfer dst转为shader readonly
-	//如果使用mipmap，之后在generateMipmaps中将layout转为shader readonly
-
-	ChangeImageLayout(m_TextureImage,
-		VK_FORMAT_R8G8B8A8_SRGB, 
-		m_uiMipmapLevel,
-		VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 
-		VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
-
-	//generateMipmaps(m_TextureImage, VK_FORMAT_R8G8B8A8_SRGB, nTexWidth, nTexHeight, m_uiMipmapLevel);
-
-	stbi_image_free(pixels);
-}
-
-void VulkanRenderer::CreateTextureImageView()
-{
-	m_TextureImageView = CreateImageView(m_TextureImage,
-		VK_FORMAT_R8G8B8A8_SRGB,	//格式为sRGB
-		VK_IMAGE_ASPECT_COLOR_BIT,	//aspectFlags为COLOR_BIT
-		m_uiMipmapLevel
-	);
-}
+//void VulkanRenderer::CreateTextureImageAndFillData()
+//{
+//	//int nTexWidth = 0;
+//	//int nTexHeight = 0;
+//	//int nTexChannel = 0;
+//	//stbi_uc* pixels = stbi_load(m_TexturePath.string().c_str(), &nTexWidth, &nTexHeight, &nTexChannel, STBI_rgb_alpha);
+//	//ASSERT(pixels, std::format("Stb load image {} failed", m_TexturePath.string()));
+//
+//	//VkDeviceSize imageSize = (uint64_t)nTexWidth * (uint64_t)nTexHeight * 4;
+//
+//	ktxResult result;
+//	ktxTexture* ktxTexture;
+//	result = ktxTexture_CreateFromNamedFile(m_TexturePath.string().c_str(), KTX_TEXTURE_CREATE_LOAD_IMAGE_DATA_BIT, &ktxTexture);
+//	ASSERT(result == KTX_SUCCESS, "KTX load image data failed");
+//
+//	ktx_uint8_t* ktxTextureData = ktxTexture_GetData(ktxTexture);
+//	ktx_size_t ktxTextureSize = ktxTexture_GetSize(ktxTexture);
+//
+//	UINT uiTexWidth = ktxTexture->baseWidth;
+//	UINT uiTexHeight = ktxTexture->baseHeight;
+//
+//	CreateImageAndBindMemory(uiTexWidth, uiTexHeight, m_uiMipmapLevel,
+//		VK_SAMPLE_COUNT_1_BIT,
+//		VK_FORMAT_R8G8B8A8_SRGB,
+//		VK_IMAGE_TILING_OPTIMAL,
+//		VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
+//		VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+//		m_TextureImage, m_TextureImageMemory);
+//
+//	//copy之前，将layout从初始的undefined转为transfer dst
+//	ChangeImageLayout(m_TextureImage,
+//		VK_FORMAT_R8G8B8A8_SRGB,				//image format
+//		m_uiMipmapLevel,						//mipmap level
+//		VK_IMAGE_LAYOUT_UNDEFINED,				//src layout
+//		VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);	//dst layout
+//
+//	TransferImageDataByStageBuffer(ktxTextureData, ktxTextureSize, m_TextureImage, static_cast<UINT>(uiTexWidth), static_cast<UINT>(uiTexHeight));
+//
+//	//transfer之后，将layout从transfer dst转为shader readonly
+//	//如果使用mipmap，之后在generateMipmaps中将layout转为shader readonly
+//
+//	ChangeImageLayout(m_TextureImage,
+//		VK_FORMAT_R8G8B8A8_SRGB, 
+//		m_uiMipmapLevel,
+//		VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 
+//		VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+//
+//	//generateMipmaps(m_TextureImage, VK_FORMAT_R8G8B8A8_SRGB, nTexWidth, nTexHeight, m_uiMipmapLevel);
+//
+//	//stbi_image_free(pixels);
+//}
+//
+//void VulkanRenderer::CreateTextureImageView()
+//{
+//	m_TextureImageView = CreateImageView(m_TextureImage,
+//		VK_FORMAT_R8G8B8A8_SRGB,	//格式为sRGB
+//		VK_IMAGE_ASPECT_COLOR_BIT,	//aspectFlags为COLOR_BIT
+//		m_uiMipmapLevel
+//	);
+//}
 
 void VulkanRenderer::CreateDescriptorSetLayout()
 {
@@ -1670,7 +1728,7 @@ void VulkanRenderer::CreateDescriptorSets()
 		//sampler
 		VkDescriptorImageInfo imageInfo{};
 		imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-		imageInfo.imageView = m_TextureImageView;
+		imageInfo.imageView = m_Texture.m_ImageView;
 		imageInfo.sampler = m_TextureSampler;
 
 		VkWriteDescriptorSet samplerWrite{};
@@ -1882,7 +1940,7 @@ void VulkanRenderer::CreateGraphicPipeline()
 	//-----------------------Multisample State--------------------------//
 	VkPipelineMultisampleStateCreateInfo multisamplingStateCreateInfo{};
 	multisamplingStateCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
-	multisamplingStateCreateInfo.sampleShadingEnable = (VkBool32)(m_uiMipmapLevel > 1);
+	multisamplingStateCreateInfo.sampleShadingEnable = (VkBool32)(m_Texture.m_uiMipLevelNum > 1);
 	multisamplingStateCreateInfo.minSampleShading = 0.8f;
 	multisamplingStateCreateInfo.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
 	multisamplingStateCreateInfo.minSampleShading = 1.f;
@@ -2075,29 +2133,28 @@ void VulkanRenderer::RecordCommandBuffer(VkCommandBuffer& commandBuffer, UINT ui
 
 void VulkanRenderer::UpdateUniformBuffer(UINT uiIdx)
 {
-	//static auto startTime = std::chrono::high_resolution_clock::now();
-	//auto currentTime = std::chrono::high_resolution_clock::now();
+	static auto startTime = std::chrono::high_resolution_clock::now();
+	auto currentTime = std::chrono::high_resolution_clock::now();
 
-	//float time = std::chrono::duration<float, std::chrono::seconds::period>(currentTime - startTime).count();
+	float time = std::chrono::duration<float, std::chrono::seconds::period>(currentTime - startTime).count();
 
-	////time = 1.f;
-
-	UniformBufferObject ubo{};
-	ubo.view = m_Camera.GetViewMatrix();
-	ubo.proj = m_Camera.GetProjMatrix();
+	m_UboData.view = m_Camera.GetViewMatrix();
+	m_UboData.proj = m_Camera.GetProjMatrix();
 	//OpenGL与Vulkan的差异 - Y坐标是反的
-	ubo.proj[1][1] *= -1.f;
+	m_UboData.proj[1][1] *= -1.f;
 
 	void* uniformBufferData;
-	vkMapMemory(m_LogicalDevice, m_vecUniformBufferMemories[uiIdx], 0, sizeof(ubo), 0, &uniformBufferData);
-	memcpy(uniformBufferData, &ubo, sizeof(ubo));
+	vkMapMemory(m_LogicalDevice, m_vecUniformBufferMemories[uiIdx], 0, sizeof(m_UboData), 0, &uniformBufferData);
+	memcpy(uniformBufferData, &m_UboData, sizeof(m_UboData));
 	vkUnmapMemory(m_LogicalDevice, m_vecUniformBufferMemories[uiIdx]);
 
 	glm::mat4* pModelMat = nullptr;
 	for (UINT i = 0; i < INSTANCE_NUM; ++i)
 	{
 		pModelMat = (glm::mat4*)(((uint64_t)m_DynamicUboData.model + (i * m_DynamicAlignment)));
-		*pModelMat = glm::translate(glm::mat4(1.f), { i * 1.25f, 0.f, 0.f });
+		*pModelMat = glm::translate(glm::mat4(1.f), { (i - (int)(INSTANCE_NUM / 2)) * 1.25f, 0.f, 0.f });
+		//*pModelMat = glm::rotate(glm::mat4(1.f), i * time * 1.f, { 0.f, 0.f, 1.f }) * *pModelMat;
+		
 	}
 
 	void* dynamicUniformBufferData;
@@ -2262,6 +2319,115 @@ void VulkanRenderer::RecreateSwapChain()
 	
 	CreateGraphicPipeline();
 
+}
+
+DZW_VulkanWrap::Texture& VulkanRenderer::LoadTexture(const std::filesystem::path& filepath)
+{
+	DZW_VulkanWrap::Texture texture;
+	texture.m_Filepath = filepath;
+
+	if (texture.IsKtxTexture())
+	{
+		ktxResult result;
+		ktxTexture* ktxTexture;
+		result = ktxTexture_CreateFromNamedFile(texture.m_Filepath.string().c_str(), KTX_TEXTURE_CREATE_LOAD_IMAGE_DATA_BIT, &ktxTexture);
+		ASSERT(result == KTX_SUCCESS, std::format("KTX load image {} failed", texture.m_Filepath.string()));
+
+		ktx_uint8_t* ktxTextureData = ktxTexture_GetData(ktxTexture);
+		texture.m_Size = ktxTexture_GetSize(ktxTexture);
+
+		texture.m_uiWidth = ktxTexture->baseWidth;
+		texture.m_uiHeight = ktxTexture->baseHeight;
+		texture.m_uiMipLevelNum = ktxTexture->numLevels;
+		texture.m_uiLayerNum = ktxTexture->numLayers;
+		texture.m_uiFaceNum = ktxTexture->numFaces;
+
+		if (texture.IsTextureArray())
+		{
+			auto& physicalDeviceInfo = m_mapPhysicalDeviceInfo.at(m_PhysicalDevice);
+			UINT uiMaxLayerNum = physicalDeviceInfo.properties.limits.maxImageArrayLayers;
+			ASSERT(texture.m_uiLayerNum <= uiMaxLayerNum, std::format("TextureArray {} layout count {} exceed max limit {}", texture.m_Filepath.string(), texture.m_uiLayerNum, uiMaxLayerNum));
+		}
+
+		CreateImageAndBindMemory(texture.m_uiWidth, texture.m_uiHeight, texture.m_uiMipLevelNum,
+			VK_SAMPLE_COUNT_1_BIT,
+			VK_FORMAT_R8G8B8A8_SRGB,
+			VK_IMAGE_TILING_OPTIMAL,
+			VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
+			VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+			texture.m_Image, texture.m_Memory);
+
+		//copy之前，将layout从初始的undefined转为transfer dst
+		ChangeImageLayout(texture.m_Image,
+			VK_FORMAT_R8G8B8A8_SRGB,				//image format
+			texture.m_uiMipLevelNum,				//mipmap levels
+			texture.m_uiLayerNum,					//layers
+			VK_IMAGE_LAYOUT_UNDEFINED,				//src layout
+			VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);	//dst layout
+
+		TransferImageDataByStageBuffer(ktxTextureData, texture.m_Size, texture.m_Image, texture.m_uiWidth, texture.m_uiHeight, texture, ktxTexture);
+
+		ktxTexture_Destroy(ktxTexture);
+	}
+	else
+	{
+		//stb库是一个轻量级的图像处理库，无法直接读取图片的mipmap层级
+		int nTexWidth = 0;
+		int nTexHeight = 0;
+		int nTexChannel = 0;
+		stbi_uc* pixels = stbi_load(texture.m_Filepath.string().c_str(), &nTexWidth, &nTexHeight, &nTexChannel, STBI_rgb_alpha);
+		ASSERT(pixels, std::format("STB load image {} failed", texture.m_Filepath.string()));
+
+		texture.m_uiWidth = static_cast<UINT>(nTexWidth);
+		texture.m_uiHeight = static_cast<UINT>(nTexHeight);
+		texture.m_uiMipLevelNum = 1;
+		texture.m_uiLayerNum = 1;
+		texture.m_uiFaceNum = 1;
+
+		texture.m_Size = texture.m_uiWidth * texture.m_uiHeight * 4;
+
+		CreateImageAndBindMemory(texture.m_uiWidth, texture.m_uiHeight, texture.m_uiMipLevelNum,
+			VK_SAMPLE_COUNT_1_BIT,
+			VK_FORMAT_R8G8B8A8_SRGB,
+			VK_IMAGE_TILING_OPTIMAL,
+			VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
+			VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+			texture.m_Image, texture.m_Memory);
+
+		//copy之前，将layout从初始的undefined转为transfer dst
+		ChangeImageLayout(texture.m_Image,
+			VK_FORMAT_R8G8B8A8_SRGB,				//image format
+			texture.m_uiMipLevelNum,				//mipmap levels
+			texture.m_uiLayerNum,					//layers
+			VK_IMAGE_LAYOUT_UNDEFINED,				//src layout
+			VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);	//dst layout
+
+		TransferImageDataByStageBuffer(pixels, texture.m_Size, texture.m_Image, texture.m_uiWidth, texture.m_uiHeight, texture, nullptr);
+
+		stbi_image_free(pixels);
+
+	}
+
+	//transfer之后，将layout从transfer dst转为shader readonly
+	//如果使用mipmap，之后在generateMipmaps中将layout转为shader readonly
+
+	ChangeImageLayout(texture.m_Image,
+		VK_FORMAT_R8G8B8A8_SRGB,
+		texture.m_uiMipLevelNum,
+		texture.m_uiLayerNum,
+		VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+		VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+	
+	//generateMipmaps(m_TextureImage, VK_FORMAT_R8G8B8A8_SRGB, nTexWidth, nTexHeight, m_uiMipmapLevel);
+
+	texture.m_ImageView = CreateImageView(texture.m_Image,
+		VK_FORMAT_R8G8B8A8_SRGB,	//格式为sRGB
+		VK_IMAGE_ASPECT_COLOR_BIT,	//aspectFlags为COLOR_BIT
+		texture.m_uiMipLevelNum,
+		texture.m_uiLayerNum
+	);
+
+	return texture;
 }
 
 

@@ -233,6 +233,11 @@ void UI::Draw()
 
     ImGui::Begin("Stat");
     ImGui::Text("FPS: %d", m_pRenderer->GetFPS());
+
+    static float fLod = 0.f;
+    if (ImGui::SliderFloat("Texture Lod", &fLod, 0.f, 10.f))
+        m_pRenderer->SetTextureLod(fLod);
+
     ImGui::End();
 }
 

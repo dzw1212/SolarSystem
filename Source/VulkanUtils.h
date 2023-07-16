@@ -2,7 +2,7 @@
 #include "vulkan/vulkan.h"
 #include <unordered_map>
 
-namespace VulkanUtils
+namespace DZW_VulkanUtils
 {
 	std::unordered_map<VkMemoryPropertyFlags, std::string> g_mapMemoryPropertyFlagToName = {
 		{VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,			"Device Local"},

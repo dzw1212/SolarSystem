@@ -13,14 +13,12 @@ project "SolarSystem"
     {
         "./Source/**.h",
         "./Source/**.cpp",
-        "./Submodule/ImGui/*.h",
-        "./Submodule/ImGui/*.cpp",
+        "./Source/**.c",
     }
 
     libdirs --附加库目录
     {
         "D:/VulkanSDK/Lib",
-        "./Submodule/ImGui/bin/Debug"
     }
 
     links --附加依赖项
@@ -31,13 +29,16 @@ project "SolarSystem"
 
     includedirs --外部包含目录
     {
+        "D:/VulkanSDK/Include",
         "./Submodule/GLFW/include",
         "./Submodule/glm",
         "./Submodule/spdlog/include",
         "./Submodule/ImGui",
         "./Submodule/tinygltf",
         "./Submodule/tinyobjloader",
-        "D:/VulkanSDK/Include",
+        "./Submodule/KTX/include",
+        "./Submodule/KTX/other_include",
+        "./Submodule/KTX/lib",
     }
 
     filter "configurations:Debug"

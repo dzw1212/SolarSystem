@@ -1,0 +1,55 @@
+{
+    "Sun" : {
+        "Desc" : "太阳",
+        "Texture" : "./Assert/Texture/Sun/8k_sun.jpg",
+        "Diameter" : 1392700
+    },
+    "Mercury" :
+    {
+        "Desc" : "水星",
+        "Texture" : "./Assert/Texture/Mercury/8k_mercury.jpg",
+        "Diameter" : 4879
+    },
+    "Venus" :
+    {
+        "Desc" : "金星",
+        "Texture" : "./Assert/Texture/Venus/4k_venus_atmosphere.jpg",
+        "Diameter" : 12104
+    },
+    "Earth" :
+    {
+        "Desc" : "地球",
+        "Texture" : "./Assert/Texture/Earth/8k_earth_daymap.jpg",
+        "Diameter" : 12742
+    },
+    "Mars" :
+    {
+        "Desc" : "火星",
+        "Texture" : "./Assert/Texture/Mars/8k_mars.jpg",
+        "Diameter" : 6779
+    },
+    "Juipter" :
+    {
+        "Desc" : "木星",
+        "Texture" : "./Assert/Texture/Juipter/8k_jupiter.jpg",
+        "Diameter" : 139820
+    },
+    "Saturn" :
+    {
+        "Desc" : "土星",
+        "Texture" : "./Assert/Texture/Saturn/8k_saturn.jpg",
+        "Diameter" : 116460
+    },
+    "Uranus" :
+    {
+        "Desc" : "天王星",
+        "Texture" : "./Assert/Texture/Uranus/2k_uranus.jpg",
+        "Diameter" : 50724
+    },
+    "Neptune" :
+    {
+        "Desc" : "海王星",
+        "Texture" : "./Assert/Texture/Neptune/2k_neptune.jpg",
+        "Diameter" : 49244
+    }
+}
