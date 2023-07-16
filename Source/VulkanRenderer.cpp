@@ -914,12 +914,12 @@ void VulkanRenderer::CreateSwapChain()
 	VULKAN_ASSERT(vkCreateSwapchainKHR(m_LogicalDevice, &createInfo, nullptr, &m_SwapChain), "Create swap chain failed");
 }
 
-VkImageView VulkanRenderer::CreateImageView(VkImage image, VkFormat format, VkImageAspectFlags aspectFlags, UINT uiMipLevelCount, UINT uiLayerCount)
+VkImageView VulkanRenderer::CreateImageView(VkImage image, VkImageViewType viewType, VkFormat format, VkImageAspectFlags aspectFlags, UINT uiMipLevelCount, UINT uiLayerCount)
 {
 	VkImageViewCreateInfo createInfo{};
 	createInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
 	createInfo.image = image;
-	createInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
+	createInfo.viewType = viewType;
 	createInfo.format = format;
 	createInfo.subresourceRange.aspectMask = aspectFlags;
 	createInfo.subresourceRange.baseMipLevel = 0;
@@ -947,7 +947,7 @@ void VulkanRenderer::CreateSwapChainImageViews()
 	m_vecSwapChainImageViews.resize(m_vecSwapChainImages.size());
 	for (UINT i = 0; i < m_vecSwapChainImageViews.size(); ++i)
 	{
-		m_vecSwapChainImageViews[i] = CreateImageView(m_vecSwapChainImages[i], m_SwapChainFormat, VK_IMAGE_ASPECT_COLOR_BIT, 1, 1);
+		m_vecSwapChainImageViews[i] = CreateImageView(m_vecSwapChainImages[i], VK_IMAGE_VIEW_TYPE_2D, m_SwapChainFormat, VK_IMAGE_ASPECT_COLOR_BIT, 1, 1);
 	}
 }
 
@@ -963,7 +963,7 @@ void VulkanRenderer::CreateSwapChainFrameBuffers()
 		VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
 		m_DepthImage, m_DepthImageMemory);
 
-	m_DepthImageView = CreateImageView(m_DepthImage, m_DepthFormat, VK_IMAGE_ASPECT_DEPTH_BIT, 1, 1);
+	m_DepthImageView = CreateImageView(m_DepthImage, VK_IMAGE_VIEW_TYPE_2D, m_DepthFormat, VK_IMAGE_ASPECT_DEPTH_BIT, 1, 1);
 
 	ChangeImageLayout(m_DepthImage, m_DepthFormat, 1, 1,
 		VK_IMAGE_LAYOUT_UNDEFINED, 
@@ -1279,7 +1279,7 @@ void VulkanRenderer::CreateUniformBuffers()
 
 	auto physicalDeviceProperties = m_mapPhysicalDeviceInfo.at(m_PhysicalDevice).properties;
 	size_t minUboAlignment = physicalDeviceProperties.limits.minUniformBufferOffsetAlignment;
-	m_DynamicAlignment = sizeof(glm::mat4); //model
+	m_DynamicAlignment = sizeof(glm::mat4) + sizeof(float);
 	if (minUboAlignment > 0)
 	{
 		m_DynamicAlignment = (m_DynamicAlignment + minUboAlignment - 1) & ~(minUboAlignment - 1);
@@ -1288,7 +1288,9 @@ void VulkanRenderer::CreateUniformBuffers()
 	VkDeviceSize dynamicUniformBufferSize = m_DynamicAlignment * INSTANCE_NUM;
 
 	m_DynamicUboData.model = (glm::mat4*)alignedAlloc(dynamicUniformBufferSize, m_DynamicAlignment);
-	ASSERT(m_DynamicUboData.model, "Allocate dynamic ubo data");
+	//ASSERT(m_DynamicUboData.model, "Allocate dynamic ubo data");
+
+	m_DynamicUboData.fTextureIndex = (float*)alignedAlloc(dynamicUniformBufferSize, m_DynamicAlignment);
 
 	m_vecDynamicUniformBuffers.resize(m_vecSwapChainImages.size());
 	m_vecDynamicUniformBufferMemories.resize(m_vecSwapChainImages.size());
@@ -2149,12 +2151,14 @@ void VulkanRenderer::UpdateUniformBuffer(UINT uiIdx)
 	vkUnmapMemory(m_LogicalDevice, m_vecUniformBufferMemories[uiIdx]);
 
 	glm::mat4* pModelMat = nullptr;
+	float* pTextureIdx = nullptr;
 	for (UINT i = 0; i < INSTANCE_NUM; ++i)
 	{
 		pModelMat = (glm::mat4*)(((uint64_t)m_DynamicUboData.model + (i * m_DynamicAlignment)));
 		*pModelMat = glm::translate(glm::mat4(1.f), { (i - (int)(INSTANCE_NUM / 2)) * 1.25f, 0.f, 0.f });
 		//*pModelMat = glm::rotate(glm::mat4(1.f), i * time * 1.f, { 0.f, 0.f, 1.f }) * *pModelMat;
-		
+		pTextureIdx = (float*)(pModelMat + sizeof(glm::mat4));
+		*pTextureIdx = static_cast<float>(i);
 	}
 
 	void* dynamicUniformBufferData;
@@ -2420,7 +2424,7 @@ DZW_VulkanWrap::Texture& VulkanRenderer::LoadTexture(const std::filesystem::path
 	
 	//generateMipmaps(m_TextureImage, VK_FORMAT_R8G8B8A8_SRGB, nTexWidth, nTexHeight, m_uiMipmapLevel);
 
-	texture.m_ImageView = CreateImageView(texture.m_Image,
+	texture.m_ImageView = CreateImageView(texture.m_Image, VK_IMAGE_VIEW_TYPE_2D_ARRAY,
 		VK_FORMAT_R8G8B8A8_SRGB,	//格式为sRGB
 		VK_IMAGE_ASPECT_COLOR_BIT,	//aspectFlags为COLOR_BIT
 		texture.m_uiMipLevelNum,

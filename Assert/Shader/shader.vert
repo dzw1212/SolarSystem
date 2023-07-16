@@ -7,6 +7,7 @@ layout (location = 2) in vec2 inTexCoord;
 layout (location = 0) out vec3 fragColor;
 layout (location = 1) out vec2 fragTexCoord;
 layout (location = 2) out float textureLod;
+layout (location = 3) out vec3 outUV;
 
 layout (binding = 0) uniform UniformBufferObject
 {
@@ -18,6 +19,7 @@ layout (binding = 0) uniform UniformBufferObject
 layout (binding = 1) uniform DynamicUniformBufferObject
 {
 	mat4 model;
+	float textureIndex;
 } dynamicUbo;
 
 layout (binding = 2) uniform sampler2DArray texSampler;
@@ -27,4 +29,5 @@ void main() {
     fragColor = inColor;
 	fragTexCoord = inTexCoord;
 	textureLod = ubo.lod;
+	outUV = vec3(inTexCoord, dynamicUbo.textureIndex);
 }

@@ -180,7 +180,7 @@ private:
 
 	VkSurfaceFormatKHR ChooseUISwapChainSurfaceFormat(const std::vector<VkSurfaceFormatKHR>& vecAvailableFormats);
 
-	VkImageView CreateImageView(VkImage image, VkFormat format, VkImageAspectFlags aspectFlags, UINT uiMipLevelCount, UINT uiLayerCount);
+	VkImageView CreateImageView(VkImage image, VkImageViewType viewType, VkFormat format, VkImageAspectFlags aspectFlags, UINT uiMipLevelCount, UINT uiLayerCount);
 	void CreateSwapChainImages();
 	void CreateSwapChainImageViews();
 	void CreateSwapChainFrameBuffers();
@@ -206,6 +206,7 @@ private:
 	struct DynamicUniformBufferObject
 	{
 		glm::mat4* model;
+		float* fTextureIndex;
 	};
 
 	UINT FindSuitableMemoryTypeIndex(UINT typeFilter, VkMemoryPropertyFlags properties);
