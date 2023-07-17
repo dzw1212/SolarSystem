@@ -66,6 +66,8 @@ VulkanRenderer::VulkanRenderer()
 	m_uiFrameCounter = 0;
 
 	m_DynamicAlignment = 0;
+	m_UboBufferSize = 0;
+	m_DynamicUboBufferSize = 0;
 }
 
 VulkanRenderer::~VulkanRenderer()
@@ -956,7 +958,7 @@ void VulkanRenderer::CreateSwapChainFrameBuffers()
 	m_DepthFormat = ChooseDepthFormat(false);
 
 	CreateImageAndBindMemory(m_SwapChainExtent2D.width, m_SwapChainExtent2D.height, 
-		1, VK_SAMPLE_COUNT_1_BIT, 
+		1, 1, VK_SAMPLE_COUNT_1_BIT, 
 		m_DepthFormat,
 		VK_IMAGE_TILING_OPTIMAL, 
 		VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT, 
@@ -1266,9 +1268,12 @@ void VulkanRenderer::CreateUniformBuffers()
 {
 	m_vecUniformBuffers.resize(m_vecSwapChainImages.size());
 	m_vecUniformBufferMemories.resize(m_vecSwapChainImages.size());
+
+	m_UboBufferSize = sizeof(UniformBufferObject);
+
 	for (size_t i = 0; i < m_vecSwapChainImages.size(); ++i)
 	{
-		CreateBufferAndBindMemory(sizeof(UniformBufferObject),
+		CreateBufferAndBindMemory(m_UboBufferSize,
 			VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
 			VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
 			m_vecUniformBuffers[i],
@@ -1285,19 +1290,17 @@ void VulkanRenderer::CreateUniformBuffers()
 		m_DynamicAlignment = (m_DynamicAlignment + minUboAlignment - 1) & ~(minUboAlignment - 1);
 	}
 
-	VkDeviceSize dynamicUniformBufferSize = m_DynamicAlignment * INSTANCE_NUM;
+	m_DynamicUboBufferSize = m_DynamicAlignment * INSTANCE_NUM;
 
-	m_DynamicUboData.model = (glm::mat4*)alignedAlloc(dynamicUniformBufferSize, m_DynamicAlignment);
-	//ASSERT(m_DynamicUboData.model, "Allocate dynamic ubo data");
-
-	m_DynamicUboData.fTextureIndex = (float*)alignedAlloc(dynamicUniformBufferSize, m_DynamicAlignment);
+	m_DynamicUboData.model = (glm::mat4*)alignedAlloc(m_DynamicUboBufferSize, m_DynamicAlignment);
+	m_DynamicUboData.fTextureIndex = (float*)((size_t)m_DynamicUboData.model + sizeof(glm::mat4));
 
 	m_vecDynamicUniformBuffers.resize(m_vecSwapChainImages.size());
 	m_vecDynamicUniformBufferMemories.resize(m_vecSwapChainImages.size());
 
 	for (size_t i = 0; i < m_vecSwapChainImages.size(); ++i)
 	{
-		CreateBufferAndBindMemory(dynamicUniformBufferSize, 
+		CreateBufferAndBindMemory(m_DynamicUboBufferSize,
 			VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
 			VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
 			m_vecDynamicUniformBuffers[i], 
@@ -1357,7 +1360,7 @@ void VulkanRenderer::AllocateImageMemory(VkMemoryPropertyFlags propertyFlags, Vk
 	VULKAN_ASSERT(vkAllocateMemory(m_LogicalDevice, &allocInfo, nullptr, &imageMemory), "Allocate image memory failed");
 }
 
-void VulkanRenderer::CreateImageAndBindMemory(uint32_t uiWidth, uint32_t uiHeight, uint32_t uiMipLevel, VkSampleCountFlagBits sampleCount, VkFormat format, VkImageTiling tiling, VkImageUsageFlags usage, VkMemoryPropertyFlags propertyFlags, VkImage& image, VkDeviceMemory& imageMemory)
+void VulkanRenderer::CreateImageAndBindMemory(UINT uiWidth, UINT uiHeight, UINT uiMipLevelCount, UINT uiLayerCount, VkSampleCountFlagBits sampleCount, VkFormat format, VkImageTiling tiling, VkImageUsageFlags usage, VkMemoryPropertyFlags propertyFlags, VkImage& image, VkDeviceMemory& imageMemory)
 {
 	VkImageCreateInfo imageCreateInfo{};
 	imageCreateInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
@@ -1365,8 +1368,8 @@ void VulkanRenderer::CreateImageAndBindMemory(uint32_t uiWidth, uint32_t uiHeigh
 	imageCreateInfo.extent.width = static_cast<uint32_t>(uiWidth);
 	imageCreateInfo.extent.height = static_cast<uint32_t>(uiHeight);
 	imageCreateInfo.extent.depth = 1;
-	imageCreateInfo.mipLevels = uiMipLevel;
-	imageCreateInfo.arrayLayers = 1;
+	imageCreateInfo.mipLevels = uiMipLevelCount;
+	imageCreateInfo.arrayLayers = uiLayerCount;
 	imageCreateInfo.format = format;
 	imageCreateInfo.tiling = tiling;
 	imageCreateInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
@@ -1510,7 +1513,7 @@ void VulkanRenderer::TransferImageDataByStageBuffer(void* pData, VkDeviceSize im
 					VkBufferImageCopy bufferCopyRegion = {};
 					bufferCopyRegion.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
 					bufferCopyRegion.imageSubresource.mipLevel = mipLevel;
-					bufferCopyRegion.imageSubresource.baseArrayLayer = layer * 6 + face;
+					bufferCopyRegion.imageSubresource.baseArrayLayer = face * 6 + layer;
 					bufferCopyRegion.imageSubresource.layerCount = 1;
 					bufferCopyRegion.imageExtent.width = uiWidth >> mipLevel;
 					bufferCopyRegion.imageExtent.height = uiHeight >> mipLevel;
@@ -1716,7 +1719,7 @@ void VulkanRenderer::CreateDescriptorSets()
 		VkDescriptorBufferInfo dynamicDescriptorBufferInfo{};
 		dynamicDescriptorBufferInfo.buffer = m_vecDynamicUniformBuffers[i];
 		dynamicDescriptorBufferInfo.offset = 0;
-		dynamicDescriptorBufferInfo.range = 64;
+		dynamicDescriptorBufferInfo.range = m_DynamicAlignment;
 
 		VkWriteDescriptorSet dynamicUboWrite{};
 		dynamicUboWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
@@ -2146,24 +2149,24 @@ void VulkanRenderer::UpdateUniformBuffer(UINT uiIdx)
 	m_UboData.proj[1][1] *= -1.f;
 
 	void* uniformBufferData;
-	vkMapMemory(m_LogicalDevice, m_vecUniformBufferMemories[uiIdx], 0, sizeof(m_UboData), 0, &uniformBufferData);
-	memcpy(uniformBufferData, &m_UboData, sizeof(m_UboData));
+	vkMapMemory(m_LogicalDevice, m_vecUniformBufferMemories[uiIdx], 0, m_UboBufferSize, 0, &uniformBufferData);
+	memcpy(uniformBufferData, &m_UboData, m_UboBufferSize);
 	vkUnmapMemory(m_LogicalDevice, m_vecUniformBufferMemories[uiIdx]);
 
 	glm::mat4* pModelMat = nullptr;
 	float* pTextureIdx = nullptr;
 	for (UINT i = 0; i < INSTANCE_NUM; ++i)
 	{
-		pModelMat = (glm::mat4*)(((uint64_t)m_DynamicUboData.model + (i * m_DynamicAlignment)));
-		*pModelMat = glm::translate(glm::mat4(1.f), { (i - (int)(INSTANCE_NUM / 2)) * 1.25f, 0.f, 0.f });
+		pModelMat = (glm::mat4*)((size_t)m_DynamicUboData.model + (i * m_DynamicAlignment));
+		*pModelMat = glm::translate(glm::mat4(1.f), { ((float)i - (float)(INSTANCE_NUM / 2)) * 1.25f, 0.f, 0.f });
 		//*pModelMat = glm::rotate(glm::mat4(1.f), i * time * 1.f, { 0.f, 0.f, 1.f }) * *pModelMat;
-		pTextureIdx = (float*)(pModelMat + sizeof(glm::mat4));
-		*pTextureIdx = static_cast<float>(i);
+		pTextureIdx = (float*)((size_t)m_DynamicUboData.fTextureIndex + (i * m_DynamicAlignment));
+		*pTextureIdx = (float)(i);
 	}
 
 	void* dynamicUniformBufferData;
-	vkMapMemory(m_LogicalDevice, m_vecDynamicUniformBufferMemories[uiIdx], 0, m_DynamicAlignment * INSTANCE_NUM, 0, &dynamicUniformBufferData);
-	memcpy(dynamicUniformBufferData, m_DynamicUboData.model, m_DynamicAlignment * INSTANCE_NUM);
+	vkMapMemory(m_LogicalDevice, m_vecDynamicUniformBufferMemories[uiIdx], 0, m_DynamicUboBufferSize, 0, &dynamicUniformBufferData);
+	memcpy(dynamicUniformBufferData, m_DynamicUboData.model, m_DynamicUboBufferSize);
 	vkUnmapMemory(m_LogicalDevice, m_vecDynamicUniformBufferMemories[uiIdx]);
 }
 
@@ -2353,7 +2356,7 @@ DZW_VulkanWrap::Texture& VulkanRenderer::LoadTexture(const std::filesystem::path
 			ASSERT(texture.m_uiLayerNum <= uiMaxLayerNum, std::format("TextureArray {} layout count {} exceed max limit {}", texture.m_Filepath.string(), texture.m_uiLayerNum, uiMaxLayerNum));
 		}
 
-		CreateImageAndBindMemory(texture.m_uiWidth, texture.m_uiHeight, texture.m_uiMipLevelNum,
+		CreateImageAndBindMemory(texture.m_uiWidth, texture.m_uiHeight, texture.m_uiMipLevelNum, texture.m_uiLayerNum,
 			VK_SAMPLE_COUNT_1_BIT,
 			VK_FORMAT_R8G8B8A8_SRGB,
 			VK_IMAGE_TILING_OPTIMAL,
@@ -2390,7 +2393,7 @@ DZW_VulkanWrap::Texture& VulkanRenderer::LoadTexture(const std::filesystem::path
 
 		texture.m_Size = texture.m_uiWidth * texture.m_uiHeight * 4;
 
-		CreateImageAndBindMemory(texture.m_uiWidth, texture.m_uiHeight, texture.m_uiMipLevelNum,
+		CreateImageAndBindMemory(texture.m_uiWidth, texture.m_uiHeight, texture.m_uiMipLevelNum, texture.m_uiLayerNum,
 			VK_SAMPLE_COUNT_1_BIT,
 			VK_FORMAT_R8G8B8A8_SRGB,
 			VK_IMAGE_TILING_OPTIMAL,

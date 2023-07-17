@@ -220,7 +220,7 @@ private:
 	void CreateTextureSampler();
 
 	void AllocateImageMemory(VkMemoryPropertyFlags propertyFlags, VkImage& image, VkDeviceMemory& bufferMemory);
-	void CreateImageAndBindMemory(uint32_t uiWidth, uint32_t uiHeight, uint32_t uiMipLevel,
+	void CreateImageAndBindMemory(UINT uiWidth, UINT uiHeight, UINT uiMipLevelCount, UINT uiLayerCount,
 		VkSampleCountFlagBits sampleCount, VkFormat format,
 		VkImageTiling tiling, VkImageUsageFlags usage, VkMemoryPropertyFlags properties,
 		VkImage& image, VkDeviceMemory& imageMemory);
@@ -352,11 +352,13 @@ private:
 	std::vector<VkBuffer> m_vecUniformBuffers;
 	std::vector<VkDeviceMemory> m_vecUniformBufferMemories;
 	UniformBufferObject m_UboData;
+	size_t m_UboBufferSize;
 
 	std::vector<VkBuffer> m_vecDynamicUniformBuffers;
 	std::vector<VkDeviceMemory> m_vecDynamicUniformBufferMemories;
 	size_t m_DynamicAlignment;
 	DynamicUniformBufferObject m_DynamicUboData;
+	size_t m_DynamicUboBufferSize;
 
 	VkSampler m_TextureSampler;
 
