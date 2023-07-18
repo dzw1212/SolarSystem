@@ -26,7 +26,7 @@
 #include "ktx.h"
 #include "ktxvulkan.h"
 
-#define INSTANCE_NUM 7
+#define INSTANCE_NUM 9
 
 #include "imgui.h"
 #include "UI/UI.h"
@@ -101,7 +101,8 @@ void VulkanRenderer::Init()
 	//CreateTextureImageView();
 
 	//m_Texture = LoadTexture("./Assert/Texture/viking_room.png");
-	m_Texture = LoadTexture("./Assert/Texture/texturearray_rgba.ktx");
+	m_Texture = LoadTexture("./Assert/Texture/solarsystem_array_rgba8.ktx");
+	//m_Texture = LoadTexture("./Assert/Texture/earth.ktx");
 
 	CreateTextureSampler();
 
@@ -2161,7 +2162,7 @@ void VulkanRenderer::UpdateUniformBuffer(UINT uiIdx)
 		*pModelMat = glm::translate(glm::mat4(1.f), { ((float)i - (float)(INSTANCE_NUM / 2)) * 1.25f, 0.f, 0.f });
 		//*pModelMat = glm::rotate(glm::mat4(1.f), i * time * 1.f, { 0.f, 0.f, 1.f }) * *pModelMat;
 		pTextureIdx = (float*)((size_t)m_DynamicUboData.fTextureIndex + (i * m_DynamicAlignment));
-		*pTextureIdx = (float)(i);
+		*pTextureIdx = (float)(i % INSTANCE_NUM);
 	}
 
 	void* dynamicUniformBufferData;
@@ -2340,6 +2341,9 @@ DZW_VulkanWrap::Texture& VulkanRenderer::LoadTexture(const std::filesystem::path
 		result = ktxTexture_CreateFromNamedFile(texture.m_Filepath.string().c_str(), KTX_TEXTURE_CREATE_LOAD_IMAGE_DATA_BIT, &ktxTexture);
 		ASSERT(result == KTX_SUCCESS, std::format("KTX load image {} failed", texture.m_Filepath.string()));
 
+		ASSERT(ktxTexture->glFormat == GL_RGBA);
+		ASSERT(ktxTexture->numDimensions == 2);
+
 		ktx_uint8_t* ktxTextureData = ktxTexture_GetData(ktxTexture);
 		texture.m_Size = ktxTexture_GetSize(ktxTexture);
 
@@ -2385,13 +2389,15 @@ DZW_VulkanWrap::Texture& VulkanRenderer::LoadTexture(const std::filesystem::path
 		stbi_uc* pixels = stbi_load(texture.m_Filepath.string().c_str(), &nTexWidth, &nTexHeight, &nTexChannel, STBI_rgb_alpha);
 		ASSERT(pixels, std::format("STB load image {} failed", texture.m_Filepath.string()));
 
+		ASSERT(nTexChannel == 4);
+
 		texture.m_uiWidth = static_cast<UINT>(nTexWidth);
 		texture.m_uiHeight = static_cast<UINT>(nTexHeight);
 		texture.m_uiMipLevelNum = 1;
 		texture.m_uiLayerNum = 1;
 		texture.m_uiFaceNum = 1;
 
-		texture.m_Size = texture.m_uiWidth * texture.m_uiHeight * 4;
+		texture.m_Size = texture.m_uiWidth * texture.m_uiHeight * static_cast<UINT>(nTexChannel);
 
 		CreateImageAndBindMemory(texture.m_uiWidth, texture.m_uiHeight, texture.m_uiMipLevelNum, texture.m_uiLayerNum,
 			VK_SAMPLE_COUNT_1_BIT,
