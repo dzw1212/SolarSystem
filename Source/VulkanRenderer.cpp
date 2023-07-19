@@ -4,6 +4,7 @@
 #include "Log.h"
 
 #include <chrono>
+#include <mutex>
 
 #define GLM_FORCE_RADIANS
 #define GLM_FORCE_DEPTH_ZERO_TO_ONE
@@ -122,7 +123,7 @@ void VulkanRenderer::Init()
 
 	SetupCamera();
 
-	g_UI.Init(this);
+	//g_UI.Init(this);
 }
 
 void VulkanRenderer::Loop()
@@ -152,7 +153,9 @@ void VulkanRenderer::Loop()
 
 void VulkanRenderer::Clean()
 {
-	g_UI.Clean();
+	_aligned_free(m_DynamicUboData.model);
+
+	//g_UI.Clean();
 
 	for (const auto& shaderModule : m_mapShaderModule)
 	{
@@ -1037,8 +1040,8 @@ void VulkanRenderer::CreateRenderPass()
 	attachmentDescriptions[0].stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
 	attachmentDescriptions[0].stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
 	attachmentDescriptions[0].initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-	//attachmentDescriptions[0].finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR; //适用于present的布局
-	attachmentDescriptions[0].finalLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL; //让UI的renderpass负责present
+	attachmentDescriptions[0].finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR; //适用于present的布局
+	//attachmentDescriptions[0].finalLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL; //让UI的renderpass负责present
 
 	VkAttachmentReference colorAttachmentRef{};
 	colorAttachmentRef.attachment = 0;
@@ -1243,7 +1246,7 @@ void VulkanRenderer::CreateBufferAndBindMemory(VkDeviceSize deviceSize, VkBuffer
 
 // Wrapper functions for aligned memory allocation
 // There is currently no standard for this in C++ that works across all platforms and vendors, so we abstract this
-void* alignedAlloc(size_t size, size_t alignment)
+static void* alignedAlloc(size_t size, size_t alignment)
 {
 	void* data = nullptr;
 #if defined(_MSC_VER) || defined(__MINGW32__)
@@ -1256,7 +1259,7 @@ void* alignedAlloc(size_t size, size_t alignment)
 	return data;
 }
 
-void alignedFree(void* data)
+static void alignedFree(void* data)
 {
 #if	defined(_MSC_VER) || defined(__MINGW32__)
 	_aligned_free(data);
@@ -1293,7 +1296,7 @@ void VulkanRenderer::CreateUniformBuffers()
 
 	m_DynamicUboBufferSize = m_DynamicAlignment * INSTANCE_NUM;
 
-	m_DynamicUboData.model = (glm::mat4*)alignedAlloc(m_DynamicUboBufferSize, m_DynamicAlignment);
+	m_DynamicUboData.model = (glm::mat4*)_aligned_malloc(m_DynamicUboBufferSize, m_DynamicAlignment);
 	m_DynamicUboData.fTextureIndex = (float*)((size_t)m_DynamicUboData.model + sizeof(glm::mat4));
 
 	m_vecDynamicUniformBuffers.resize(m_vecSwapChainImages.size());
@@ -2057,8 +2060,8 @@ void VulkanRenderer::SetupCamera()
 
 	glfwSetScrollCallback(m_pWindow, [](GLFWwindow* window, double dOffsetX, double dOffsetY)
 		{
-			if (ImGui::IsWindowHovered(ImGuiHoveredFlags_AnyWindow))
-				return;
+			//if (ImGui::IsWindowHovered(ImGuiHoveredFlags_AnyWindow))
+			//	return;
 			auto& camera = *(Camera*)glfwGetWindowUserPointer(window);
 			camera.OnMouseScroll(dOffsetX, dOffsetY);
 		}
@@ -2134,6 +2137,8 @@ void VulkanRenderer::RecordCommandBuffer(VkCommandBuffer& commandBuffer, UINT ui
 
 	vkCmdEndRenderPass(commandBuffer);
 
+	//g_UI.RecordRenderPass(uiIdx);
+
 	VULKAN_ASSERT(vkEndCommandBuffer(commandBuffer), "End command buffer failed");
 }
 
@@ -2175,13 +2180,14 @@ void VulkanRenderer::Render()
 {
 	m_uiFrameCounter++;
 
-	if (!ImGui::IsWindowHovered(ImGuiHoveredFlags_AnyWindow) && !ImGui::IsAnyItemActive())
+	//if (!ImGui::IsWindowHovered(ImGuiHoveredFlags_AnyWindow) && !ImGui::IsAnyItemActive())
 		m_Camera.Tick();
 
-	g_UI.StartNewFrame();
 
 	//等待fence的值变为signaled
 	vkWaitForFences(m_LogicalDevice, 1, &m_vecInFlightFences[m_uiCurFrameIdx], VK_TRUE, UINT64_MAX);
+
+	//g_UI.StartNewFrame();
 
 	uint32_t uiImageIdx;
 	VkResult res = vkAcquireNextImageKHR(m_LogicalDevice, m_SwapChain, UINT64_MAX,
@@ -2192,7 +2198,8 @@ void VulkanRenderer::Render()
 		{
 			//SwapChain与WindowSurface不兼容，无法继续渲染
 			//一般发生在window尺寸改变时
-			RecreateSwapChain();
+			WindowResize();
+			//g_UI.Resize();
 			return;
 		}
 		else if (res == VK_SUBOPTIMAL_KHR)
@@ -2208,15 +2215,13 @@ void VulkanRenderer::Render()
 	//重设fence为unsignaled
 	vkResetFences(m_LogicalDevice, 1, &m_vecInFlightFences[m_uiCurFrameIdx]);
 
-	//auto uiCommandBuffer = g_UI.FillCommandBuffer(*this, m_uiCurFrameIdx);
-
 	vkResetCommandBuffer(m_vecCommandBuffers[m_uiCurFrameIdx], 0);
 
 	UpdateUniformBuffer(m_uiCurFrameIdx);
 
 	RecordCommandBuffer(m_vecCommandBuffers[m_uiCurFrameIdx], uiImageIdx);
 
-	auto uiCommandBuffer = g_UI.FillCommandBuffer(m_uiCurFrameIdx);
+	//auto uiCommandBuffer = g_UI.FillCommandBuffer(m_uiCurFrameIdx);
 
 	VkSubmitInfo submitInfo{};
 	submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
@@ -2233,7 +2238,7 @@ void VulkanRenderer::Render()
 
 	std::vector<VkCommandBuffer> commandBuffers = {
 		m_vecCommandBuffers[m_uiCurFrameIdx],
-		uiCommandBuffer,
+		//uiCommandBuffer,
 	};
 	submitInfo.commandBufferCount = static_cast<UINT>(commandBuffers.size());
 	submitInfo.pCommandBuffers = commandBuffers.data();
@@ -2269,7 +2274,8 @@ void VulkanRenderer::Render()
 	{
 		if (res == VK_ERROR_OUT_OF_DATE_KHR || res == VK_SUBOPTIMAL_KHR || m_bFrameBufferResized)
 		{
-			RecreateSwapChain();
+			WindowResize();
+			//g_UI.Resize();
 			m_bFrameBufferResized = false;
 		}
 		else
@@ -2281,7 +2287,7 @@ void VulkanRenderer::Render()
 	m_uiCurFrameIdx = (m_uiCurFrameIdx + 1) % static_cast<UINT>(m_vecSwapChainImages.size());
 }
 
-void VulkanRenderer::RecreateSwapChain()
+void VulkanRenderer::WindowResize()
 {
 	//特殊处理窗口最小化的情况
 	int nWidth = 0;
@@ -2317,6 +2323,8 @@ void VulkanRenderer::RecreateSwapChain()
 
 	//清理SwapChain
 	vkDestroySwapchainKHR(m_LogicalDevice, m_SwapChain, nullptr);
+	vkDestroyRenderPass(m_LogicalDevice, m_RenderPass, nullptr);
+	vkDestroyPipeline(m_LogicalDevice, m_GraphicPipeline, nullptr);
 
 	CreateSwapChain();
 	CreateRenderPass();
@@ -2327,6 +2335,7 @@ void VulkanRenderer::RecreateSwapChain()
 	
 	CreateGraphicPipeline();
 
+	m_Camera.SetViewportSize(nWidth, nHeight);
 }
 
 DZW_VulkanWrap::Texture& VulkanRenderer::LoadTexture(const std::filesystem::path& filepath)

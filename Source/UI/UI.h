@@ -17,7 +17,11 @@ public:
 	void StartNewFrame();
 	void Draw();
 	VkCommandBuffer& FillCommandBuffer(UINT uiIdx);
+
+	void RecordRenderPass(UINT uiIdx);
+
 	void Clean();
+	void Resize();
 
 private:
 	VulkanRenderer* m_pRenderer;

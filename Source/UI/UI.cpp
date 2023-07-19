@@ -10,8 +10,8 @@
 
 static VkDescriptorPool             g_DescriptorPool            = VK_NULL_HANDLE;
 static VkRenderPass                 g_RenderPass                = VK_NULL_HANDLE;
-static VkCommandPool                g_CommandPool               = VK_NULL_HANDLE;
-static std::vector<VkCommandBuffer> g_vecCommandBuffers;
+//static VkCommandPool                g_CommandPool               = VK_NULL_HANDLE;
+//static std::vector<VkCommandBuffer> g_vecCommandBuffers;
 static std::vector<VkFramebuffer>   g_vecFrameBuffers;
 
 static PhysicalDeviceInfo g_PhysicalDeviceInfo;
@@ -78,19 +78,19 @@ void UI::Init(VulkanRenderer* pRenderer)
     info.pDependencies = &dependency;
     VULKAN_ASSERT(vkCreateRenderPass(m_pRenderer->GetLogicalDevice(), &info, nullptr, &g_RenderPass), "Create ImGui render pass failed");
 
-    VkCommandPoolCreateInfo commandPoolCreateInfo{};
-    commandPoolCreateInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
-    commandPoolCreateInfo.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
-    commandPoolCreateInfo.queueFamilyIndex = m_pRenderer->GetGraphicQueueIdx();
-    VULKAN_ASSERT(vkCreateCommandPool(m_pRenderer->GetLogicalDevice(), &commandPoolCreateInfo, nullptr, &g_CommandPool), "Create ImGui command pool failed");
+    //VkCommandPoolCreateInfo commandPoolCreateInfo{};
+    //commandPoolCreateInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
+    //commandPoolCreateInfo.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
+    //commandPoolCreateInfo.queueFamilyIndex = m_pRenderer->GetGraphicQueueIdx();
+    //VULKAN_ASSERT(vkCreateCommandPool(m_pRenderer->GetLogicalDevice(), &commandPoolCreateInfo, nullptr, &g_CommandPool), "Create ImGui command pool failed");
 
-    g_vecCommandBuffers.resize(m_pRenderer->GetSwapChainImageCount());
-    VkCommandBufferAllocateInfo commandBufferAllocator{};
-    commandBufferAllocator.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-    commandBufferAllocator.commandPool = g_CommandPool;
-    commandBufferAllocator.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-    commandBufferAllocator.commandBufferCount = static_cast<UINT>(g_vecCommandBuffers.size());
-    VULKAN_ASSERT(vkAllocateCommandBuffers(m_pRenderer->GetLogicalDevice(), &commandBufferAllocator, g_vecCommandBuffers.data()), "Allocate Imgui command buffer failed");
+    //g_vecCommandBuffers.resize(m_pRenderer->GetSwapChainImageCount());
+    //VkCommandBufferAllocateInfo commandBufferAllocator{};
+    //commandBufferAllocator.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+    //commandBufferAllocator.commandPool = g_CommandPool;
+    //commandBufferAllocator.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+    //commandBufferAllocator.commandBufferCount = static_cast<UINT>(g_vecCommandBuffers.size());
+    //VULKAN_ASSERT(vkAllocateCommandBuffers(m_pRenderer->GetLogicalDevice(), &commandBufferAllocator, g_vecCommandBuffers.data()), "Allocate Imgui command buffer failed");
 
 
     g_vecFrameBuffers.resize(m_pRenderer->GetSwapChainImageCount());
@@ -112,6 +112,7 @@ void UI::Init(VulkanRenderer* pRenderer)
         VULKAN_ASSERT(vkCreateFramebuffer(m_pRenderer->GetLogicalDevice(), &frameBufferCreateInfo, nullptr, &g_vecFrameBuffers[i]), "Create ImGui frame buffer failed");
     }
 
+
     //设置ImGui上下文
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
@@ -127,12 +128,12 @@ void UI::Init(VulkanRenderer* pRenderer)
     ImGui::StyleColorsClassic();
 
     // When viewports are enabled we tweak WindowRounding/WindowBg so platform windows can look identical to regular ones.
-    //ImGuiStyle& style = ImGui::GetStyle();
-    //if (io.ConfigFlags & ImGuiConfigFlags_ViewportsEnable)
-    //{
-    //    style.WindowRounding = 0.0f;
-    //    style.Colors[ImGuiCol_WindowBg].w = 1.0f;
-    //}
+    ImGuiStyle& style = ImGui::GetStyle();
+    if (io.ConfigFlags & ImGuiConfigFlags_ViewportsEnable)
+    {
+        style.WindowRounding = 0.0f;
+        style.Colors[ImGuiCol_WindowBg].w = 1.0f;
+    }
 
     // Setup Platform/Renderer bindings
     ImGui_ImplGlfw_InitForVulkan(m_pRenderer->GetWindow(), true);
@@ -243,7 +244,58 @@ void UI::Draw()
 
 VkCommandBuffer& UI::FillCommandBuffer(UINT uiIdx)
 {
+    //Draw();
+
+    //// Rendering
+    //ImGui::Render();
+    //ImDrawData* main_draw_data = ImGui::GetDrawData();
+    //const bool main_is_minimized = (main_draw_data->DisplaySize.x <= 0.0f || main_draw_data->DisplaySize.y <= 0.0f);
+    //if (!main_is_minimized)
+    //{
+    //    //vkResetCommandPool(m_pRenderer->GetLogicalDevice(), g_CommandPool, 0);
+
+    //    VkCommandBufferBeginInfo commandBufferBeginInfo = {};
+    //    commandBufferBeginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+    //    commandBufferBeginInfo.flags |= VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+    //    vkBeginCommandBuffer(g_vecCommandBuffers[uiIdx], &commandBufferBeginInfo);
+
+    //    VkRenderPassBeginInfo renderPassBeginInfo = {};
+    //    renderPassBeginInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
+    //    renderPassBeginInfo.renderPass = g_RenderPass;
+    //    renderPassBeginInfo.framebuffer = g_vecFrameBuffers[uiIdx];
+    //    renderPassBeginInfo.renderArea.extent = m_pRenderer->GetSwapChainExtent2D();
+    //    VkClearValue clearColor = { 0.f, 0.f, 0.f, 1.f };
+    //    renderPassBeginInfo.clearValueCount = 1;
+    //    renderPassBeginInfo.pClearValues = &clearColor;
+    //    vkCmdBeginRenderPass(g_vecCommandBuffers[uiIdx], &renderPassBeginInfo, VK_SUBPASS_CONTENTS_INLINE);
+
+    //    // Record dear imgui primitives into command buffer
+    //    ImGui_ImplVulkan_RenderDrawData(main_draw_data, g_vecCommandBuffers[uiIdx]);
+
+    //    // Submit command buffer
+    //    vkCmdEndRenderPass(g_vecCommandBuffers[uiIdx]);
+
+    //    vkEndCommandBuffer(g_vecCommandBuffers[uiIdx]);
+    //}
+
+    //// Update and Render additional Platform Windows
+    //ImGuiIO& io = ImGui::GetIO();
+    //if (io.ConfigFlags & ImGuiConfigFlags_ViewportsEnable)
+    //{
+    //    ImGui::UpdatePlatformWindows();
+    //    ImGui::RenderPlatformWindowsDefault();
+    //}
+
+    //return g_vecCommandBuffers[uiIdx];
+
+    return m_pRenderer->GetCommandBuffer(0);
+}
+
+void UI::RecordRenderPass(UINT uiIdx)
+{
     Draw();
+
+    auto& commandBuffer = m_pRenderer->GetCommandBuffer(uiIdx);
 
     // Rendering
     ImGui::Render();
@@ -253,11 +305,6 @@ VkCommandBuffer& UI::FillCommandBuffer(UINT uiIdx)
     {
         //vkResetCommandPool(m_pRenderer->GetLogicalDevice(), g_CommandPool, 0);
 
-        VkCommandBufferBeginInfo commandBufferBeginInfo = {};
-        commandBufferBeginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-        commandBufferBeginInfo.flags |= VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-        vkBeginCommandBuffer(g_vecCommandBuffers[uiIdx], &commandBufferBeginInfo);
-
         VkRenderPassBeginInfo renderPassBeginInfo = {};
         renderPassBeginInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
         renderPassBeginInfo.renderPass = g_RenderPass;
@@ -266,15 +313,13 @@ VkCommandBuffer& UI::FillCommandBuffer(UINT uiIdx)
         VkClearValue clearColor = { 0.f, 0.f, 0.f, 1.f };
         renderPassBeginInfo.clearValueCount = 1;
         renderPassBeginInfo.pClearValues = &clearColor;
-        vkCmdBeginRenderPass(g_vecCommandBuffers[uiIdx], &renderPassBeginInfo, VK_SUBPASS_CONTENTS_INLINE);
+        vkCmdBeginRenderPass(commandBuffer, &renderPassBeginInfo, VK_SUBPASS_CONTENTS_INLINE);
 
         // Record dear imgui primitives into command buffer
-        ImGui_ImplVulkan_RenderDrawData(main_draw_data, g_vecCommandBuffers[uiIdx]);
+        ImGui_ImplVulkan_RenderDrawData(main_draw_data, commandBuffer);
 
         // Submit command buffer
-        vkCmdEndRenderPass(g_vecCommandBuffers[uiIdx]);
-
-        vkEndCommandBuffer(g_vecCommandBuffers[uiIdx]);
+        vkCmdEndRenderPass(commandBuffer);
     }
 
     // Update and Render additional Platform Windows
@@ -284,8 +329,6 @@ VkCommandBuffer& UI::FillCommandBuffer(UINT uiIdx)
         ImGui::UpdatePlatformWindows();
         ImGui::RenderPlatformWindowsDefault();
     }
-
-    return g_vecCommandBuffers[uiIdx];
 }
 
 void UI::Clean()
@@ -296,7 +339,7 @@ void UI::Clean()
 
     //vkFreeCommandBuffers(m_pRenderer->GetLogicalDevice(), g_CommandPool, g_vecCommandBuffers.size(), g_vecCommandBuffers.data());
     
-    vkDestroyCommandPool(m_pRenderer->GetLogicalDevice(), g_CommandPool, nullptr);
+    //vkDestroyCommandPool(m_pRenderer->GetLogicalDevice(), g_CommandPool, nullptr);
 
     for (const auto& frameBuffer : g_vecFrameBuffers)
     {
@@ -306,4 +349,39 @@ void UI::Clean()
     ImGui_ImplVulkan_Shutdown();
     ImGui_ImplGlfw_Shutdown();
     ImGui::DestroyContext();
+}
+
+void UI::Resize()
+{
+    int nWidth, nHeight;
+    glfwGetFramebufferSize(m_pRenderer->GetWindow(), &nWidth, &nHeight);
+    if (nWidth > 0 && nHeight > 0)
+    {
+        vkDeviceWaitIdle(m_pRenderer->GetLogicalDevice());
+
+        //for (const auto& frameBuffer : g_vecFrameBuffers)
+        //{
+        //    vkDestroyFramebuffer(m_pRenderer->GetLogicalDevice(), frameBuffer, nullptr);
+        //}
+        g_vecFrameBuffers.clear();
+
+        g_vecFrameBuffers.resize(m_pRenderer->GetSwapChainImageCount());
+        for (size_t i = 0; i < m_pRenderer->GetSwapChainImageCount(); ++i)
+        {
+            std::vector<VkImageView> vecImageViewAttachments = {
+                m_pRenderer->GetSwapChainImageView(i),
+            };
+
+            VkFramebufferCreateInfo frameBufferCreateInfo = {};
+            frameBufferCreateInfo.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
+            frameBufferCreateInfo.renderPass = g_RenderPass;
+            frameBufferCreateInfo.attachmentCount = 1;
+            frameBufferCreateInfo.pAttachments = vecImageViewAttachments.data();
+            frameBufferCreateInfo.width = m_pRenderer->GetSwapChainExtent2D().width;
+            frameBufferCreateInfo.height = m_pRenderer->GetSwapChainExtent2D().height;
+            frameBufferCreateInfo.layers = 1;
+
+            VULKAN_ASSERT(vkCreateFramebuffer(m_pRenderer->GetLogicalDevice(), &frameBufferCreateInfo, nullptr, &g_vecFrameBuffers[i]), "Create ImGui frame buffer failed");
+        }
+    }
 }

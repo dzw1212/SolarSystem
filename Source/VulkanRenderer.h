@@ -17,6 +17,7 @@ struct Vertex3D
 	glm::vec3 pos;
 	glm::vec3 color;
 	glm::vec2 texCoord;
+	glm::vec3 normal;
 
 	static VkVertexInputBindingDescription GetBindingDescription()
 	{
@@ -46,12 +47,20 @@ struct Vertex3D
 		attributeDescriptions[2].format = VK_FORMAT_R32G32_SFLOAT;
 		attributeDescriptions[2].offset = offsetof(Vertex3D, texCoord);
 
+		attributeDescriptions[2].binding = 0;
+		attributeDescriptions[2].location = 2; //layout (location = 2) in vec3 inNormal;
+		attributeDescriptions[2].format = VK_FORMAT_R32G32B32_SFLOAT;
+		attributeDescriptions[2].offset = offsetof(Vertex3D, normal);
+
 		return attributeDescriptions;
 	}
 
 	bool operator==(const Vertex3D& other) const
 	{
-		return (pos == other.pos) && (texCoord == other.texCoord) && (color == other.color);
+		return (pos == other.pos) 
+			&& (texCoord == other.texCoord) 
+			&& (color == other.color) 
+			&& (normal == other.normal);
 	}
 };
 
@@ -252,7 +261,7 @@ private:
 	void UpdateUniformBuffer(UINT uiIdx);
 	void Render();
 
-	void RecreateSwapChain();
+	void WindowResize();
 
 private:
 	DZW_VulkanWrap::Texture& LoadTexture(const std::filesystem::path& filepath);
@@ -292,6 +301,8 @@ public:
 
 
 	void SetTextureLod(float fLod) { m_UboData.lod = fLod; }
+
+	VkCommandBuffer& GetCommandBuffer(UINT uiIdx) { return m_vecCommandBuffers[uiIdx]; }
 
 private:
 	UINT m_uiWindowWidth;

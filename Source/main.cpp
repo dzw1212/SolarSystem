@@ -1,7 +1,9 @@
 #include "VulkanRenderer.h"
+#include <windows.h>
 
 int main()
 {
+    SetCurrentDirectory(L"D:\\dev\\SolarSystem");
     VulkanRenderer renderer;
 
     //renderer.LoadModel("./Assert/Model/teapot.gltf");
