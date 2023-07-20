@@ -7,7 +7,8 @@ int main()
     VulkanRenderer renderer;
 
     //renderer.LoadModel("./Assert/Model/teapot.gltf");
-    renderer.LoadModel("./Assert/Model/sphere.obj");
+    //renderer.LoadModel("./Assert/Model/sphere.obj");
+    renderer.LoadModel("./Assert/Model/cube.gltf");
     //renderer.LoadModel("./Assert/Model/sphere.gltf");
     //renderer.LoadModel("./Assert/Model/triangle.gltf");
     //renderer.LoadModel("./Assert/Model/vulkanscenemodels.gltf");

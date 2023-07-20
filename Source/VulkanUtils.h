@@ -50,8 +50,8 @@ namespace DZW_VulkanUtils
 		{VK_QUEUE_TRANSFER_BIT,				"Transfer"},
 		//{VK_QUEUE_SAPARSE_BINDING_BIT,		"Saparse Binding"},
 		{VK_QUEUE_PROTECTED_BIT,			"Protected"},
-		{VK_QUEUE_VIDEO_DECODE_BIT_KHR,		"Video Decode KHR"},
-		{VK_QUEUE_OPTICAL_FLOW_BIT_NV,		"Optical Flow NV"},
+		//{VK_QUEUE_VIDEO_DECODE_BIT_KHR,		"Video Decode KHR"},
+		//{VK_QUEUE_OPTICAL_FLOW_BIT_NV,		"Optical Flow NV"},
 	};
 
 	std::string GetQueueFamilyNameByFlags(VkQueueFlags flags)

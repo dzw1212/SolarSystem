@@ -301,6 +301,7 @@ public:
 
 
 	void SetTextureLod(float fLod) { m_UboData.lod = fLod; }
+	UINT GetTextureMaxLod() { return m_Texture.m_uiMipLevelNum; }
 
 	VkCommandBuffer& GetCommandBuffer(UINT uiIdx) { return m_vecCommandBuffers[uiIdx]; }
 

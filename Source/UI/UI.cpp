@@ -117,12 +117,13 @@ void UI::Init(VulkanRenderer* pRenderer)
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
     ImGuiIO& io = ImGui::GetIO();
-    //io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;       // Enable Keyboard Controls
+    //io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;     // Enable Keyboard Controls
     //io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;      // Enable Gamepad Controls
     io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;           // Enable Docking
     //io.ConfigFlags |= ImGuiConfigFlags_ViewportsEnable;         // Enable Multi-Viewport / Platform Windows
     //io.ConfigViewportsNoAutoMerge = true;
     //io.ConfigViewportsNoTaskBarIcon = true;
+    io.ConfigFlags |= ImGuiConfigFlags_IsSRGB;
 
     //ÉèÖÃImGui·ç¸ñ
     ImGui::StyleColorsClassic();
@@ -220,12 +221,12 @@ static void setStyle(uint32_t index)
 
 void UI::Draw()
 {
-    static int selectedStyle = 0;
-    ImGui::Begin("Select Mode");
-    if (ImGui::Combo("UI style", &selectedStyle, "Vulkan\0Classic\0Dark\0Light\0")) {
-        setStyle(selectedStyle);
-    }
-    ImGui::End();
+    //static int selectedStyle = 0;
+    //ImGui::Begin("Select Mode");
+    //if (ImGui::Combo("UI style", &selectedStyle, "Vulkan\0Classic\0Dark\0Light\0")) {
+    //    setStyle(selectedStyle);
+    //}
+    //ImGui::End();
 
     ImGui::Begin("Physical Device");
     ImGui::Text("Name: %s", g_PhysicalDeviceInfo.properties.deviceName);
@@ -236,7 +237,7 @@ void UI::Draw()
     ImGui::Text("FPS: %d", m_pRenderer->GetFPS());
 
     static float fLod = 0.f;
-    if (ImGui::SliderFloat("Texture Lod", &fLod, 0.f, 10.f))
+    if (ImGui::SliderFloat("Texture Lod", &fLod, 0.f, static_cast<float>(m_pRenderer->GetTextureMaxLod()), "%.1f"))
         m_pRenderer->SetTextureLod(fLod);
 
     ImGui::End();

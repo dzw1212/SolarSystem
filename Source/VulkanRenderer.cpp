@@ -102,7 +102,8 @@ void VulkanRenderer::Init()
 	//CreateTextureImageView();
 
 	//m_Texture = LoadTexture("./Assert/Texture/viking_room.png");
-	m_Texture = LoadTexture("./Assert/Texture/solarsystem_array_rgba8.ktx");
+	//m_Texture = LoadTexture("./Assert/Texture/solarsystem_array_rgba8.ktx");
+	m_Texture = LoadTexture("./Assert/Texture/texturearray_rgba.ktx");
 	//m_Texture = LoadTexture("./Assert/Texture/earth.ktx");
 
 	CreateTextureSampler();
@@ -1296,7 +1297,11 @@ void VulkanRenderer::CreateUniformBuffers()
 
 	m_DynamicUboBufferSize = m_DynamicAlignment * INSTANCE_NUM;
 
+<<<<<<< Updated upstream
 	m_DynamicUboData.model = (glm::mat4*)_aligned_malloc(m_DynamicUboBufferSize, m_DynamicAlignment);
+=======
+	m_DynamicUboData.model = (glm::mat4*)alignedAlloc(m_DynamicUboBufferSize, minUboAlignment > 0 ? minUboAlignment : m_DynamicAlignment);
+>>>>>>> Stashed changes
 	m_DynamicUboData.fTextureIndex = (float*)((size_t)m_DynamicUboData.model + sizeof(glm::mat4));
 
 	m_vecDynamicUniformBuffers.resize(m_vecSwapChainImages.size());
