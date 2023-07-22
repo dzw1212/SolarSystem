@@ -13,6 +13,7 @@
 #include "glm/vec4.hpp"
 #include "glm/mat4x4.hpp"
 #include "glm/gtc/matrix_transform.hpp"
+#include "glm/gtc/type_ptr.hpp"
 
 #define TINYGLTF_IMPLEMENTATION
 #define STB_IMAGE_IMPLEMENTATION
@@ -28,6 +29,8 @@
 #include "ktxvulkan.h"
 
 #define INSTANCE_NUM 9
+
+#define ENABLE_GUI true
 
 #include "imgui.h"
 #include "UI/UI.h"
@@ -89,42 +92,58 @@ void VulkanRenderer::Init()
 	CreateSwapChain();
 	CreateRenderPass();
 
+	CreateDepthImage();
+	CreateDepthImageView();
+
 	CreateSwapChainImages();
 	CreateSwapChainImageViews();
 	CreateSwapChainFrameBuffers();
 
-
 	CreateShader();
 	CreateUniformBuffers();
-	
 
 	//CreateTextureImageAndFillData();
 	//CreateTextureImageView();
 
-	//m_Texture = LoadTexture("./Assert/Texture/viking_room.png");
-	//m_Texture = LoadTexture("./Assert/Texture/solarsystem_array_rgba8.ktx");
-	m_Texture = LoadTexture("./Assert/Texture/texturearray_rgba.ktx");
-	//m_Texture = LoadTexture("./Assert/Texture/earth.ktx");
+	//LoadModel("./Assert/Model/teapot.gltf");
+	LoadModel("./Assert/Model/sphere.obj", m_Model);
+	//LoadModel("./Assert/Model/Skybox/cube.gltf");
+	//LoadModel("./Assert/Model/sphere.gltf");
+	//LoadModel("./Assert/Model/triangle.gltf");
+	//LoadModel("./Assert/Model/vulkanscenemodels.gltf");
+	//LoadModel("./Assert/Model/viking_room.obj");
 
-	CreateTextureSampler();
+	//m_Texture = LoadTexture("./Assert/Texture/viking_room.png");
+	LoadTexture("./Assert/Texture/solarsystem_array_rgba8.ktx", m_Texture);
+	//LoadTexture("./Assert/Texture/texturearray_rgba.ktx", m_Texture);
+	//m_Texture = LoadTexture("./Assert/Texture/earth.ktx");
 
 	CreateDescriptorSetLayout();
 	CreateDescriptorPool();
 	CreateDescriptorSets();
-
-	CreateVertexBuffer();
-	CreateIndexBuffer();
 
 	CreateCommandPool();
 	CreateCommandBuffer();
 
 	CreateSyncObjects();
 
+	CreateGraphicPipelineLayout();
 	CreateGraphicPipeline();
+
+	LoadTexture("./Assert/Texture/Skybox/milkyway_cubemap.ktx", m_SkyboxTexture);
+	LoadModel("./Assert/Model/Skybox/cube.gltf", m_SkyboxModel);
+	CreateSkyboxShader();
+	CreateSkyboxUniformBuffers();
+	CreateSkyboxDescriptorSetLayout();
+	CreateSkyboxDescriptorPool();
+	CreateSkyboxDescriptorSets();
+	CreateSkyboxGraphicPipelineLayout();
+	CreateSkyboxGraphicPipeline();
 
 	SetupCamera();
 
-	//g_UI.Init(this);
+	if (ENABLE_GUI)
+		g_UI.Init(this);
 }
 
 void VulkanRenderer::Loop()
@@ -156,7 +175,30 @@ void VulkanRenderer::Clean()
 {
 	_aligned_free(m_DynamicUboData.model);
 
-	//g_UI.Clean();
+	if (ENABLE_GUI)
+		g_UI.Clean();
+
+	FreeTexture(m_Texture);
+	FreeModel(m_Model);
+
+	FreeTexture(m_SkyboxTexture);
+	FreeModel(m_SkyboxModel);
+
+	vkDestroyDescriptorPool(m_LogicalDevice, m_SkyboxDescriptorPool, nullptr);
+	vkDestroyDescriptorSetLayout(m_LogicalDevice, m_SkyboxDescriptorSetLayout, nullptr);
+	for (size_t i = 0; i < m_vecSwapChainImages.size(); ++i)
+	{
+		vkFreeMemory(m_LogicalDevice, m_vecSkyboxUniformBufferMemories[i], nullptr);
+		vkDestroyBuffer(m_LogicalDevice, m_vecSkyboxUniformBuffers[i], nullptr);
+	}
+
+	for (const auto& shaderModule : m_mapSkyboxShaderModule)
+	{
+		vkDestroyShaderModule(m_LogicalDevice, shaderModule.second, nullptr);
+	}
+
+	vkDestroyPipeline(m_LogicalDevice, m_SkyboxGraphicPipeline, nullptr);
+	vkDestroyPipelineLayout(m_LogicalDevice, m_SkyboxGraphicPipelineLayout, nullptr);
 
 	for (const auto& shaderModule : m_mapShaderModule)
 	{
@@ -177,22 +219,10 @@ void VulkanRenderer::Clean()
 		vkDestroyImageView(m_LogicalDevice, imageView, nullptr);
 	}
 
-	//for (const auto& image : m_vecSwapChainImages)
-	//{
-	//	vkDestroyImage(m_LogicalDevice, image, nullptr);
-	//}
-
-	//清理SwapChain
+	//清理SwapChain会自动释放其下的Image
 	vkDestroySwapchainKHR(m_LogicalDevice, m_SwapChain, nullptr);
 
-	vkDestroySampler(m_LogicalDevice, m_TextureSampler, nullptr);
-
-	vkDestroyImageView(m_LogicalDevice, m_Texture.m_ImageView, nullptr);
-	vkDestroyImage(m_LogicalDevice, m_Texture.m_Image, nullptr);
-	vkFreeMemory(m_LogicalDevice, m_Texture.m_Memory, nullptr);
-
 	vkDestroyDescriptorPool(m_LogicalDevice, m_DescriptorPool, nullptr);
-
 	vkDestroyDescriptorSetLayout(m_LogicalDevice, m_DescriptorSetLayout, nullptr);
 	for (size_t i = 0; i < m_vecSwapChainImages.size(); ++i)
 	{
@@ -201,16 +231,6 @@ void VulkanRenderer::Clean()
 
 		vkFreeMemory(m_LogicalDevice, m_vecDynamicUniformBufferMemories[i], nullptr);
 		vkDestroyBuffer(m_LogicalDevice, m_vecDynamicUniformBuffers[i], nullptr);
-	}
-
-
-	vkFreeMemory(m_LogicalDevice, m_VertexBufferMemory, nullptr);
-	vkDestroyBuffer(m_LogicalDevice, m_VertexBuffer, nullptr);
-
-	if (m_Indices.size() > 0)
-	{
-		vkFreeMemory(m_LogicalDevice, m_IndexBufferMemory, nullptr);
-		vkDestroyBuffer(m_LogicalDevice, m_IndexBuffer, nullptr);
 	}
 
 	for (int i = 0; i < m_vecSwapChainImages.size(); ++i)
@@ -239,145 +259,6 @@ void VulkanRenderer::Clean()
 
 	glfwDestroyWindow(m_pWindow);
 	glfwTerminate();
-}
-
-void VulkanRenderer::LoadOBJ(const std::filesystem::path& modelPath)
-{
-	tinyobj::attrib_t attr;	//存储所有顶点、法线、UV坐标
-	std::vector<tinyobj::shape_t> vecShapes;
-	std::vector<tinyobj::material_t> vecMaterials;
-	std::string strWarning;
-	std::string strError;
-
-	bool res = tinyobj::LoadObj(&attr, &vecShapes, &vecMaterials, &strWarning, &strError, modelPath.string().c_str());
-	ASSERT(res, std::format("Load obj file {} failed", modelPath.string().c_str()));
-
-	m_Vertices.clear();
-	m_Indices.clear();
-
-	std::unordered_map<Vertex3D, uint32_t> mapUniqueVertices;
-
-	for (const auto& shape : vecShapes)
-	{
-		for (const auto& index : shape.mesh.indices)
-		{
-			Vertex3D vert{};
-			vert.pos = {
-				attr.vertices[3 * static_cast<uint64_t>(index.vertex_index) + 0],
-				attr.vertices[3 * static_cast<uint64_t>(index.vertex_index) + 1],
-				attr.vertices[3 * static_cast<uint64_t>(index.vertex_index) + 2],
-			};
-			vert.texCoord = {
-				attr.texcoords[2 * static_cast<uint64_t>(index.texcoord_index) + 0],
-				1.f - attr.texcoords[2 * static_cast<uint64_t>(index.texcoord_index) + 1],
-			};
-			vert.color = glm::vec3(1.f, 1.f, 1.f);
-
-			m_Vertices.push_back(vert);
-			m_Indices.push_back(static_cast<uint32_t>(m_Indices.size()));
-		}
-	}
-}
-
-void VulkanRenderer::LoadGLTF(const std::filesystem::path& modelPath)
-{
-	tinygltf::Model model;
-	tinygltf::TinyGLTF loader;
-
-	std::string err;
-	std::string warn;
-	bool ret = false;
-
-	if (modelPath.extension().string() == ".glb")
-		ret = loader.LoadBinaryFromFile(&model, &err, &warn, modelPath.string());
-	else if (modelPath.extension().string() == ".gltf")
-		ret = loader.LoadASCIIFromFile(&model, &err, &warn, modelPath.string());
-
-	if (!warn.empty())
-		Log::Warn(std::format("Load gltf warn: {}", warn.c_str()));
-
-	if (!err.empty())
-		Log::Error(std::format("Load gltf error: {}", err.c_str()));
-
-	ASSERT(ret, "Load gltf failed");
-
-	for (auto& mesh : model.meshes)
-	{
-		for (auto& primitive : mesh.primitives)
-		{
-			const auto& accessor = model.accessors[primitive.attributes["POSITION"]];
-			const auto& bufferView = model.bufferViews[accessor.bufferView];
-			const auto& buffer = model.buffers[bufferView.buffer];
-			const float* positions = reinterpret_cast<const float*>(&buffer.data[bufferView.byteOffset + accessor.byteOffset]);
-			for (size_t i = 0; i < accessor.count; ++i)
-			{
-				Vertex3D point;
-				point.pos.x = positions[i * 3 + 0];
-				point.pos.y = positions[i * 3 + 1];
-				point.pos.z = positions[i * 3 + 2];
-
-				point.color = { 1.0, 0.0, 0.0 };
-
-				m_Vertices.push_back(point);
-			}
-		}
-
-		uint32_t indexStart = static_cast<uint32_t>(m_Indices.size());
-		uint32_t vertexStart = static_cast<uint32_t>(m_Vertices.size());
-
-		for (auto& primitive : mesh.primitives)
-		{
-			if (primitive.indices == -1)
-				continue;
-			const auto& accessor = model.accessors[primitive.indices];
-			const auto& bufferView = model.bufferViews[accessor.bufferView];
-			const auto& buffer = model.buffers[bufferView.buffer];
-
-			switch (accessor.componentType) {
-			case TINYGLTF_PARAMETER_TYPE_UNSIGNED_INT: {
-				uint32_t* buf = new uint32_t[accessor.count];
-				memcpy(buf, &buffer.data[accessor.byteOffset + bufferView.byteOffset], accessor.count * sizeof(uint32_t));
-				for (size_t index = 0; index < accessor.count; index++) {
-					m_Indices.push_back(buf[index] + vertexStart);
-				}
-				delete[] buf;
-				break;
-			}
-			case TINYGLTF_PARAMETER_TYPE_UNSIGNED_SHORT: {
-				uint16_t* buf = new uint16_t[accessor.count];
-				memcpy(buf, &buffer.data[accessor.byteOffset + bufferView.byteOffset], accessor.count * sizeof(uint16_t));
-				for (size_t index = 0; index < accessor.count; index++) {
-					m_Indices.push_back(buf[index] + vertexStart);
-				}
-				delete[] buf;
-				break;
-			}
-			case TINYGLTF_PARAMETER_TYPE_UNSIGNED_BYTE: {
-				uint8_t* buf = new uint8_t[accessor.count];
-				memcpy(buf, &buffer.data[accessor.byteOffset + bufferView.byteOffset], accessor.count * sizeof(uint8_t));
-				for (size_t index = 0; index < accessor.count; index++) {
-					m_Indices.push_back(buf[index] + vertexStart);
-				}
-				delete[] buf;
-				break;
-			}
-			default:
-				ASSERT(false, "Unsupport index component type");
-				return;
-			}
-		}
-	}
-}
-
-void VulkanRenderer::LoadModel(const std::filesystem::path& modelPath)
-{
-	const auto& extensionName = modelPath.extension().string();
-	if (extensionName == ".obj")
-		LoadOBJ(modelPath);
-	else if (extensionName == ".gltf" || extensionName == ".glb")
-		LoadGLTF(modelPath);
-	else
-		ASSERT(false, "Unsupport model type");
 }
 
 void VulkanRenderer::FrameBufferResizeCallBack(GLFWwindow* pWindow, int nWidth, int nHeight)
@@ -921,23 +802,55 @@ void VulkanRenderer::CreateSwapChain()
 	VULKAN_ASSERT(vkCreateSwapchainKHR(m_LogicalDevice, &createInfo, nullptr, &m_SwapChain), "Create swap chain failed");
 }
 
-VkImageView VulkanRenderer::CreateImageView(VkImage image, VkImageViewType viewType, VkFormat format, VkImageAspectFlags aspectFlags, UINT uiMipLevelCount, UINT uiLayerCount)
+VkImageView VulkanRenderer::CreateImageView(VkImage image, VkFormat format, VkImageAspectFlags aspectFlags, UINT uiMipLevelCount, UINT uiLayerCount, UINT uiFaceCount)
 {
+	VkImageViewType imageViewType;
+	if (uiFaceCount == 6 && uiLayerCount == 1)
+		imageViewType = VK_IMAGE_VIEW_TYPE_CUBE;
+	else if (uiLayerCount > 1)
+		imageViewType = VK_IMAGE_VIEW_TYPE_2D_ARRAY;
+	else
+		imageViewType = VK_IMAGE_VIEW_TYPE_2D;
+
 	VkImageViewCreateInfo createInfo{};
 	createInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
 	createInfo.image = image;
-	createInfo.viewType = viewType;
+	createInfo.viewType = imageViewType;
 	createInfo.format = format;
 	createInfo.subresourceRange.aspectMask = aspectFlags;
 	createInfo.subresourceRange.baseMipLevel = 0;
 	createInfo.subresourceRange.levelCount = uiMipLevelCount;
 	createInfo.subresourceRange.baseArrayLayer = 0;
-	createInfo.subresourceRange.layerCount = uiLayerCount;
+	createInfo.subresourceRange.layerCount = (uiFaceCount == 6) ? uiFaceCount : uiLayerCount;
 
 	VkImageView imageView;
 	VULKAN_ASSERT(vkCreateImageView(m_LogicalDevice, &createInfo, nullptr, &imageView), "Create image view failed");
 
 	return imageView;
+}
+
+void VulkanRenderer::CreateDepthImage()
+{
+	m_DepthFormat = ChooseDepthFormat(false);
+
+	CreateImageAndBindMemory(m_SwapChainExtent2D.width, m_SwapChainExtent2D.height,
+		1, 1, 1,
+		VK_SAMPLE_COUNT_1_BIT,
+		m_DepthFormat,
+		VK_IMAGE_TILING_OPTIMAL,
+		VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT,
+		VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+		m_DepthImage, m_DepthImageMemory);
+}
+
+void VulkanRenderer::CreateDepthImageView()
+{
+	m_DepthImageView = CreateImageView(m_DepthImage, m_DepthFormat, VK_IMAGE_ASPECT_DEPTH_BIT, 1, 1, 1);
+
+	ChangeImageLayout(m_DepthImage, m_DepthFormat, 
+		1, 1, 1,
+		VK_IMAGE_LAYOUT_UNDEFINED,
+		VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL);
 }
 
 void VulkanRenderer::CreateSwapChainImages()
@@ -954,28 +867,12 @@ void VulkanRenderer::CreateSwapChainImageViews()
 	m_vecSwapChainImageViews.resize(m_vecSwapChainImages.size());
 	for (UINT i = 0; i < m_vecSwapChainImageViews.size(); ++i)
 	{
-		m_vecSwapChainImageViews[i] = CreateImageView(m_vecSwapChainImages[i], VK_IMAGE_VIEW_TYPE_2D, m_SwapChainFormat, VK_IMAGE_ASPECT_COLOR_BIT, 1, 1);
+		m_vecSwapChainImageViews[i] = CreateImageView(m_vecSwapChainImages[i], m_SwapChainFormat, VK_IMAGE_ASPECT_COLOR_BIT, 1, 1, 1);
 	}
 }
 
 void VulkanRenderer::CreateSwapChainFrameBuffers()
 {
-	m_DepthFormat = ChooseDepthFormat(false);
-
-	CreateImageAndBindMemory(m_SwapChainExtent2D.width, m_SwapChainExtent2D.height, 
-		1, 1, VK_SAMPLE_COUNT_1_BIT, 
-		m_DepthFormat,
-		VK_IMAGE_TILING_OPTIMAL, 
-		VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT, 
-		VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
-		m_DepthImage, m_DepthImageMemory);
-
-	m_DepthImageView = CreateImageView(m_DepthImage, VK_IMAGE_VIEW_TYPE_2D, m_DepthFormat, VK_IMAGE_ASPECT_DEPTH_BIT, 1, 1);
-
-	ChangeImageLayout(m_DepthImage, m_DepthFormat, 1, 1,
-		VK_IMAGE_LAYOUT_UNDEFINED, 
-		VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL);
-
 	m_vecSwapChainFrameBuffers.resize(m_vecSwapChainImageViews.size());
 	for (size_t i = 0; i < m_vecSwapChainImageViews.size(); ++i)
 	{
@@ -1041,8 +938,7 @@ void VulkanRenderer::CreateRenderPass()
 	attachmentDescriptions[0].stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
 	attachmentDescriptions[0].stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
 	attachmentDescriptions[0].initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-	attachmentDescriptions[0].finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR; //适用于present的布局
-	//attachmentDescriptions[0].finalLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL; //让UI的renderpass负责present
+	attachmentDescriptions[0].finalLayout = ENABLE_GUI ? VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL : VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
 
 	VkAttachmentReference colorAttachmentRef{};
 	colorAttachmentRef.attachment = 0;
@@ -1297,11 +1193,7 @@ void VulkanRenderer::CreateUniformBuffers()
 
 	m_DynamicUboBufferSize = m_DynamicAlignment * INSTANCE_NUM;
 
-<<<<<<< Updated upstream
-	m_DynamicUboData.model = (glm::mat4*)_aligned_malloc(m_DynamicUboBufferSize, m_DynamicAlignment);
-=======
 	m_DynamicUboData.model = (glm::mat4*)alignedAlloc(m_DynamicUboBufferSize, minUboAlignment > 0 ? minUboAlignment : m_DynamicAlignment);
->>>>>>> Stashed changes
 	m_DynamicUboData.fTextureIndex = (float*)((size_t)m_DynamicUboData.model + sizeof(glm::mat4));
 
 	m_vecDynamicUniformBuffers.resize(m_vecSwapChainImages.size());
@@ -1312,48 +1204,10 @@ void VulkanRenderer::CreateUniformBuffers()
 		CreateBufferAndBindMemory(m_DynamicUboBufferSize,
 			VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
 			VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-			m_vecDynamicUniformBuffers[i], 
+			m_vecDynamicUniformBuffers[i],
 			m_vecDynamicUniformBufferMemories[i]
 		);
 	}
-}
-
-void VulkanRenderer::CreateTextureSampler()
-{
-	VkSamplerCreateInfo createInfo{};
-	createInfo.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
-	//设置过采样与欠采样时的采样方法，可以是nearest，linear，cubic等
-	createInfo.magFilter = VK_FILTER_LINEAR;
-	createInfo.minFilter = VK_FILTER_LINEAR;
-
-	//设置纹理采样超出边界时的寻址模式，可以是repeat，mirror，clamp to edge，clamp to border等
-	createInfo.addressModeU = VK_SAMPLER_ADDRESS_MODE_REPEAT;
-	createInfo.addressModeV = VK_SAMPLER_ADDRESS_MODE_REPEAT;
-	createInfo.addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT;
-
-	//设置是否开启各向异性过滤，你的硬件不一定支持Anisotropy，需要确认硬件支持该preperty
-	createInfo.anisotropyEnable = VK_FALSE;
-	auto& physicalDeviceProperties = m_mapPhysicalDeviceInfo.at(m_PhysicalDevice).properties;
-	createInfo.maxAnisotropy = physicalDeviceProperties.limits.maxSamplerAnisotropy;
-
-	//设置寻址模式为clamp to border时的填充颜色
-	createInfo.borderColor = VK_BORDER_COLOR_INT_OPAQUE_BLACK;
-
-	//如果为true，则坐标为[0, texWidth), [0, texHeight)
-	//如果为false，则坐标为传统的[0, 1), [0, 1)
-	createInfo.unnormalizedCoordinates = VK_FALSE;
-
-	//设置是否开启比较与对比较结果的操作，通常用于百分比邻近滤波（Shadow Map PCS）
-	createInfo.compareEnable = VK_FALSE;
-	createInfo.compareOp = VK_COMPARE_OP_ALWAYS;
-
-	//设置mipmap相关参数
-	createInfo.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
-	createInfo.mipLodBias = 0.f;
-	createInfo.minLod = 0.f;
-	createInfo.maxLod = static_cast<float>(m_Texture.m_uiMipLevelNum);
-
-	VULKAN_ASSERT(vkCreateSampler(m_LogicalDevice, &createInfo, nullptr, &m_TextureSampler), "Create texture sampler failed");
 }
 
 void VulkanRenderer::AllocateImageMemory(VkMemoryPropertyFlags propertyFlags, VkImage& image, VkDeviceMemory& imageMemory)
@@ -1369,7 +1223,7 @@ void VulkanRenderer::AllocateImageMemory(VkMemoryPropertyFlags propertyFlags, Vk
 	VULKAN_ASSERT(vkAllocateMemory(m_LogicalDevice, &allocInfo, nullptr, &imageMemory), "Allocate image memory failed");
 }
 
-void VulkanRenderer::CreateImageAndBindMemory(UINT uiWidth, UINT uiHeight, UINT uiMipLevelCount, UINT uiLayerCount, VkSampleCountFlagBits sampleCount, VkFormat format, VkImageTiling tiling, VkImageUsageFlags usage, VkMemoryPropertyFlags propertyFlags, VkImage& image, VkDeviceMemory& imageMemory)
+void VulkanRenderer::CreateImageAndBindMemory(UINT uiWidth, UINT uiHeight, UINT uiMipLevelCount, UINT uiLayerCount, UINT uiFaceCount, VkSampleCountFlagBits sampleCount, VkFormat format, VkImageTiling tiling, VkImageUsageFlags usage, VkMemoryPropertyFlags propertyFlags, VkImage& image, VkDeviceMemory& imageMemory)
 {
 	VkImageCreateInfo imageCreateInfo{};
 	imageCreateInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
@@ -1378,14 +1232,14 @@ void VulkanRenderer::CreateImageAndBindMemory(UINT uiWidth, UINT uiHeight, UINT 
 	imageCreateInfo.extent.height = static_cast<uint32_t>(uiHeight);
 	imageCreateInfo.extent.depth = 1;
 	imageCreateInfo.mipLevels = uiMipLevelCount;
-	imageCreateInfo.arrayLayers = uiLayerCount;
+	imageCreateInfo.arrayLayers = (uiFaceCount == 6) ? uiFaceCount : uiLayerCount; // Cubemap的face数在vulkan中用作arrayLayers
 	imageCreateInfo.format = format;
 	imageCreateInfo.tiling = tiling;
 	imageCreateInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
 	imageCreateInfo.usage = usage;
 	imageCreateInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 	imageCreateInfo.samples = sampleCount;
-	imageCreateInfo.flags = 0;
+	imageCreateInfo.flags = (uiFaceCount == 6) ? VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT : 0; //Cubemap需要设置对应flags
 
 	VULKAN_ASSERT(vkCreateImage(m_LogicalDevice, &imageCreateInfo, nullptr, &image), "Create image failed");
 
@@ -1405,7 +1259,7 @@ bool VulkanRenderer::CheckFormatHasStencilComponent(VkFormat format)
 	return false;
 }
 
-void VulkanRenderer::ChangeImageLayout(VkImage image, VkFormat format, UINT uiMipLevelCount, UINT uiLayerCount, VkImageLayout oldLayout, VkImageLayout newLayout)
+void VulkanRenderer::ChangeImageLayout(VkImage image, VkFormat format, UINT uiMipLevelCount, UINT uiLayerCount, UINT uiFaceCount, VkImageLayout oldLayout, VkImageLayout newLayout)
 {
 	VkCommandBuffer singleTimeCommandBuffer = BeginSingleTimeCommand();
 
@@ -1423,7 +1277,7 @@ void VulkanRenderer::ChangeImageLayout(VkImage image, VkFormat format, UINT uiMi
 	barrier.subresourceRange.baseMipLevel = 0;
 	barrier.subresourceRange.levelCount = uiMipLevelCount;
 	barrier.subresourceRange.baseArrayLayer = 0;
-	barrier.subresourceRange.layerCount = uiLayerCount;
+	barrier.subresourceRange.layerCount = (uiFaceCount == 6) ? uiFaceCount : uiLayerCount;
 	//指定barrier之前必须发生的资源操作类型，和barrier之后必须等待的资源操作类型
 	//需要根据oldLayout和newLayout的类型来决定
 	barrier.srcAccessMask = 0;
@@ -1522,7 +1376,7 @@ void VulkanRenderer::TransferImageDataByStageBuffer(void* pData, VkDeviceSize im
 					VkBufferImageCopy bufferCopyRegion = {};
 					bufferCopyRegion.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
 					bufferCopyRegion.imageSubresource.mipLevel = mipLevel;
-					bufferCopyRegion.imageSubresource.baseArrayLayer = face * 6 + layer;
+					bufferCopyRegion.imageSubresource.baseArrayLayer = (texture.m_uiFaceNum > 1) ? (face + layer * 6) : (layer);
 					bufferCopyRegion.imageSubresource.layerCount = 1;
 					bufferCopyRegion.imageExtent.width = uiWidth >> mipLevel;
 					bufferCopyRegion.imageExtent.height = uiHeight >> mipLevel;
@@ -1743,7 +1597,7 @@ void VulkanRenderer::CreateDescriptorSets()
 		VkDescriptorImageInfo imageInfo{};
 		imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
 		imageInfo.imageView = m_Texture.m_ImageView;
-		imageInfo.sampler = m_TextureSampler;
+		imageInfo.sampler = m_Texture.m_Sampler;
 
 		VkWriteDescriptorSet samplerWrite{};
 		samplerWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
@@ -1792,40 +1646,6 @@ void VulkanRenderer::TransferBufferDataByStageBuffer(void* pData, VkDeviceSize b
 	vkFreeMemory(m_LogicalDevice, stagingBufferMemory, nullptr);
 }
 
-void VulkanRenderer::CreateVertexBuffer()
-{
-	Log::Info(std::format("Vertex count : {}", m_Vertices.size()));
-
-	ASSERT(m_Vertices.size() > 0, "Vertex data empty");
-
-	VkDeviceSize verticesSize = sizeof(m_Vertices[0]) * m_Vertices.size();
-
-	//创建device local的vertexBufferMemory作为transfer的dst
-	CreateBufferAndBindMemory(verticesSize,
-		VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, //用途是作为transfer的dst、以及vertexBuffer
-		VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,	//具有性能最佳的DeviceLocal显存类型
-		m_VertexBuffer, m_VertexBufferMemory);
-
-	TransferBufferDataByStageBuffer(m_Vertices.data(), verticesSize, m_VertexBuffer);
-}
-
-void VulkanRenderer::CreateIndexBuffer()
-{
-	Log::Info(std::format("Index count : {}", m_Indices.size()));
-
-	if (m_Indices.size() == 0)
-		return;
-
-	VkDeviceSize indicesSize = sizeof(m_Indices[0]) * m_Indices.size();
-
-	CreateBufferAndBindMemory(indicesSize,
-		VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT,
-		VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
-		m_IndexBuffer, m_IndexBufferMemory);
-
-	TransferBufferDataByStageBuffer(m_Indices.data(), indicesSize, m_IndexBuffer);
-}
-
 void VulkanRenderer::CreateCommandPool()
 {
 	const auto& physicalDeviceInfo = m_mapPhysicalDeviceInfo.at(m_PhysicalDevice);
@@ -1849,6 +1669,19 @@ void VulkanRenderer::CreateCommandBuffer()
 	commandBufferAllocator.commandBufferCount = static_cast<UINT>(m_vecCommandBuffers.size());
 
 	VULKAN_ASSERT(vkAllocateCommandBuffers(m_LogicalDevice, &commandBufferAllocator, m_vecCommandBuffers.data()), "Allocate command buffer failed");
+}
+
+void VulkanRenderer::CreateGraphicPipelineLayout()
+{
+	//-----------------------Pipeline Layout--------------------------//
+	VkPipelineLayoutCreateInfo pipelineLayoutCreateInfo{};
+	pipelineLayoutCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+	pipelineLayoutCreateInfo.setLayoutCount = 1;
+	pipelineLayoutCreateInfo.pSetLayouts = &m_DescriptorSetLayout;
+	pipelineLayoutCreateInfo.pushConstantRangeCount = 0;
+	pipelineLayoutCreateInfo.pPushConstantRanges = nullptr;
+
+	VULKAN_ASSERT(vkCreatePipelineLayout(m_LogicalDevice, &pipelineLayoutCreateInfo, nullptr, &m_GraphicPipelineLayout), "Create pipeline layout failed");
 }
 
 void VulkanRenderer::CreateGraphicPipeline()
@@ -1944,7 +1777,7 @@ void VulkanRenderer::CreateGraphicPipeline()
 	rasterizationStateCreateInfo.rasterizerDiscardEnable = VK_FALSE;	//开启后，禁止所有图元经过光栅化器
 	rasterizationStateCreateInfo.polygonMode = VK_POLYGON_MODE_FILL;	//图元模式，可以是FILL、LINE、POINT
 	rasterizationStateCreateInfo.lineWidth = 1.f;	//指定光栅化后的线段宽度
-	rasterizationStateCreateInfo.cullMode = VK_CULL_MODE_NONE;	//剔除模式，可以是NONE、FRONT、BACK、FRONT_AND_BACK
+	rasterizationStateCreateInfo.cullMode = VK_CULL_MODE_BACK_BIT;	//剔除模式，可以是NONE、FRONT、BACK、FRONT_AND_BACK
 	rasterizationStateCreateInfo.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE; //顶点序，可以是顺时针cw或逆时针ccw
 	rasterizationStateCreateInfo.depthBiasEnable = VK_FALSE; //深度偏移，一般用于Shaodw Map中避免阴影痤疮
 	rasterizationStateCreateInfo.depthBiasConstantFactor = 0.f;
@@ -1967,7 +1800,7 @@ void VulkanRenderer::CreateGraphicPipeline()
 	depthStencilStateCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
 	depthStencilStateCreateInfo.depthTestEnable = VK_TRUE;
 	depthStencilStateCreateInfo.depthWriteEnable = VK_TRUE;
-	depthStencilStateCreateInfo.depthCompareOp = VK_COMPARE_OP_LESS;
+	depthStencilStateCreateInfo.depthCompareOp = VK_COMPARE_OP_LESS_OR_EQUAL;
 	depthStencilStateCreateInfo.depthBoundsTestEnable = VK_FALSE;
 	depthStencilStateCreateInfo.minDepthBounds = 0.f;
 	depthStencilStateCreateInfo.maxDepthBounds = 1.f;
@@ -2002,20 +1835,10 @@ void VulkanRenderer::CreateGraphicPipeline()
 	colorBlendStateCreateInfo.blendConstants[2] = 0.f;
 	colorBlendStateCreateInfo.blendConstants[3] = 0.f;
 
-	//-----------------------Pipeline Layout--------------------------//
-	VkPipelineLayoutCreateInfo pipelineLayoutCreateInfo{};
-	pipelineLayoutCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
-	pipelineLayoutCreateInfo.setLayoutCount = 1;
-	pipelineLayoutCreateInfo.pSetLayouts = &m_DescriptorSetLayout;
-	pipelineLayoutCreateInfo.pushConstantRangeCount = 0;
-	pipelineLayoutCreateInfo.pPushConstantRanges = nullptr;
-
-	VULKAN_ASSERT(vkCreatePipelineLayout(m_LogicalDevice, &pipelineLayoutCreateInfo, nullptr, &m_GraphicPipelineLayout), "Create pipeline layout failed");
-
 	/***********************************************************************/
 	VkGraphicsPipelineCreateInfo pipelineCreateInfo{};
 	pipelineCreateInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
-	pipelineCreateInfo.stageCount = 2;
+	pipelineCreateInfo.stageCount = static_cast<UINT>(m_mapShaderModule.size());
 	pipelineCreateInfo.pStages = shaderStageCreateInfos;
 	pipelineCreateInfo.pDynamicState = &dynamicStateCreateInfo;
 	pipelineCreateInfo.pVertexInputState = &vertexInputCreateInfo;
@@ -2060,17 +1883,343 @@ void VulkanRenderer::SetupCamera()
 	m_Camera.Set(45.f, (float)m_SwapChainExtent2D.width / (float)m_SwapChainExtent2D.height, 0.1f, 100.f);
 	m_Camera.SetViewportSize(static_cast<float>(m_SwapChainExtent2D.width), static_cast<float>(m_SwapChainExtent2D.height));
 	m_Camera.SetWindow(m_pWindow);
+	m_Camera.SetPosition({ 0.f, 0.f, 100.f });
 
 	glfwSetWindowUserPointer(m_pWindow, (void*)&m_Camera);
 
 	glfwSetScrollCallback(m_pWindow, [](GLFWwindow* window, double dOffsetX, double dOffsetY)
 		{
-			//if (ImGui::IsWindowHovered(ImGuiHoveredFlags_AnyWindow))
-			//	return;
+			if (ENABLE_GUI && ImGui::IsWindowHovered(ImGuiHoveredFlags_AnyWindow))
+				return;
 			auto& camera = *(Camera*)glfwGetWindowUserPointer(window);
 			camera.OnMouseScroll(dOffsetX, dOffsetY);
 		}
 	);
+}
+
+void VulkanRenderer::CreateSkyboxShader()
+{
+	std::unordered_map<VkShaderStageFlagBits, std::filesystem::path> mapSkyboxShaderPath = {
+		{ VK_SHADER_STAGE_VERTEX_BIT,	"./Assert/Shader/Skybox/vert.spv" },
+		{ VK_SHADER_STAGE_FRAGMENT_BIT,	"./Assert/Shader/Skybox/frag.spv" },
+	};
+	ASSERT(mapSkyboxShaderPath.size() > 0, "Detect no shader spv file");
+
+	m_mapSkyboxShaderModule.clear();
+
+	for (const auto& spvPath : mapSkyboxShaderPath)
+	{
+		auto shaderModule = CreateShaderModule(ReadShaderFile(spvPath.second));
+
+		m_mapSkyboxShaderModule[spvPath.first] = shaderModule;
+	}
+}
+
+void VulkanRenderer::CreateSkyboxGraphicPipelineLayout()
+{
+	VkPipelineLayoutCreateInfo pipelineLayoutCreateInfo{};
+	pipelineLayoutCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+	pipelineLayoutCreateInfo.setLayoutCount = 1;
+	pipelineLayoutCreateInfo.pSetLayouts = &m_SkyboxDescriptorSetLayout;
+	pipelineLayoutCreateInfo.pushConstantRangeCount = 0;
+	pipelineLayoutCreateInfo.pPushConstantRanges = nullptr;
+
+	VULKAN_ASSERT(vkCreatePipelineLayout(m_LogicalDevice, &pipelineLayoutCreateInfo, nullptr, &m_SkyboxGraphicPipelineLayout), "Create skybox pipeline layout failed");
+}
+
+void VulkanRenderer::CreateSkyboxGraphicPipeline()
+{
+	/****************************可编程管线*******************************/
+	VkPipelineShaderStageCreateInfo vertShaderStageCreateInfo{};
+	vertShaderStageCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+	vertShaderStageCreateInfo.stage = VK_SHADER_STAGE_VERTEX_BIT;
+	vertShaderStageCreateInfo.module = m_mapSkyboxShaderModule.at(VK_SHADER_STAGE_VERTEX_BIT); //Bytecode
+	vertShaderStageCreateInfo.pName = "main"; //要invoke的函数
+
+	VkPipelineShaderStageCreateInfo fragShaderStageCreateInfo{};
+	fragShaderStageCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+	fragShaderStageCreateInfo.stage = VK_SHADER_STAGE_FRAGMENT_BIT;
+	fragShaderStageCreateInfo.module = m_mapSkyboxShaderModule.at(VK_SHADER_STAGE_FRAGMENT_BIT); //Bytecode
+	fragShaderStageCreateInfo.pName = "main"; //要invoke的函数
+
+	VkPipelineShaderStageCreateInfo shaderStageCreateInfos[] = {
+		vertShaderStageCreateInfo,
+		fragShaderStageCreateInfo,
+	};
+
+	/*****************************固定管线*******************************/
+
+	//-----------------------Dynamic State--------------------------//
+
+	//-----------------------Vertex Input State--------------------------//
+	auto bindingDescription = Vertex3D::GetBindingDescription();
+	auto attributeDescriptions = Vertex3D::GetAttributeDescriptions();
+	VkPipelineVertexInputStateCreateInfo vertexInputCreateInfo{};
+	vertexInputCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
+	vertexInputCreateInfo.vertexBindingDescriptionCount = 1;
+	vertexInputCreateInfo.pVertexBindingDescriptions = &bindingDescription;
+	vertexInputCreateInfo.vertexAttributeDescriptionCount = static_cast<UINT>(attributeDescriptions.size());
+	vertexInputCreateInfo.pVertexAttributeDescriptions = attributeDescriptions.data();
+
+	//-----------------------Input Assembly State------------------------//
+	VkPipelineInputAssemblyStateCreateInfo inputAssemblyCreateInfo{};
+	inputAssemblyCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
+	inputAssemblyCreateInfo.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+	inputAssemblyCreateInfo.primitiveRestartEnable = VK_FALSE;
+
+
+	//-----------------------Viewport State--------------------------//
+	VkPipelineViewportStateCreateInfo viewportStateCreateInfo{};
+	viewportStateCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
+	viewportStateCreateInfo.viewportCount = 1;
+	viewportStateCreateInfo.scissorCount = 1;
+
+	//设置Viewport，范围为[0,0]到[width,height]
+	VkViewport viewport{};
+	viewport.x = 0.f;
+	viewport.y = 0.f;
+	viewport.width = static_cast<float>(m_SwapChainExtent2D.width);
+	viewport.height = static_cast<float>(m_SwapChainExtent2D.height);
+	viewport.minDepth = 0.f;
+	viewport.maxDepth = 1.f;
+
+	//设置裁剪区域Scissor Rectangle
+	VkRect2D scissor{};
+	scissor.offset = { 0,0 };
+	VkExtent2D ScissorExtent;
+	ScissorExtent.width = m_SwapChainExtent2D.width;
+	ScissorExtent.height = m_SwapChainExtent2D.height;
+	scissor.extent = ScissorExtent;
+
+	viewportStateCreateInfo.pViewports = &viewport;
+	viewportStateCreateInfo.pScissors = &scissor;
+
+	//-----------------------Raserization State--------------------------//
+	VkPipelineRasterizationStateCreateInfo rasterizationStateCreateInfo{};
+	rasterizationStateCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
+	rasterizationStateCreateInfo.depthClampEnable = VK_FALSE;	//开启后，超过远近平面的部分会被截断在远近平面上，而不是丢弃
+	rasterizationStateCreateInfo.rasterizerDiscardEnable = VK_FALSE;	//开启后，禁止所有图元经过光栅化器
+	rasterizationStateCreateInfo.polygonMode = VK_POLYGON_MODE_FILL;	//图元模式，可以是FILL、LINE、POINT
+	rasterizationStateCreateInfo.lineWidth = 1.f;	//指定光栅化后的线段宽度
+	rasterizationStateCreateInfo.cullMode = VK_CULL_MODE_FRONT_BIT;	//剔除正向的可见性
+	rasterizationStateCreateInfo.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE; //顶点序，可以是顺时针cw或逆时针ccw
+	rasterizationStateCreateInfo.depthBiasEnable = VK_FALSE; //深度偏移，一般用于Shaodw Map中避免阴影痤疮
+	rasterizationStateCreateInfo.depthBiasConstantFactor = 0.f;
+	rasterizationStateCreateInfo.depthBiasClamp = 0.f;
+	rasterizationStateCreateInfo.depthBiasSlopeFactor = 0.f;
+
+	//-----------------------Multisample State--------------------------//
+	VkPipelineMultisampleStateCreateInfo multisamplingStateCreateInfo{};
+	multisamplingStateCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
+	multisamplingStateCreateInfo.sampleShadingEnable = VK_FALSE;
+	multisamplingStateCreateInfo.minSampleShading = 0.8f;
+	multisamplingStateCreateInfo.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
+	multisamplingStateCreateInfo.minSampleShading = 1.f;
+	multisamplingStateCreateInfo.pSampleMask = nullptr;
+	multisamplingStateCreateInfo.alphaToCoverageEnable = VK_FALSE;
+	multisamplingStateCreateInfo.alphaToOneEnable = VK_FALSE;
+
+	//-----------------------Depth Stencil State--------------------------//
+	VkPipelineDepthStencilStateCreateInfo depthStencilStateCreateInfo{};
+	depthStencilStateCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
+	depthStencilStateCreateInfo.depthTestEnable = VK_FALSE; //作为背景，始终在最远处，不进行深度检测
+	depthStencilStateCreateInfo.depthWriteEnable = VK_FALSE;
+	depthStencilStateCreateInfo.depthCompareOp = VK_COMPARE_OP_LESS_OR_EQUAL;
+	depthStencilStateCreateInfo.depthBoundsTestEnable = VK_FALSE;
+	depthStencilStateCreateInfo.minDepthBounds = 0.f;
+	depthStencilStateCreateInfo.maxDepthBounds = 1.f;
+	depthStencilStateCreateInfo.stencilTestEnable = VK_FALSE;
+	depthStencilStateCreateInfo.front = {};
+	depthStencilStateCreateInfo.back = {};
+
+	//-----------------------Color Blend State--------------------------//
+	VkPipelineColorBlendStateCreateInfo colorBlendStateCreateInfo{};
+	colorBlendStateCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
+	colorBlendStateCreateInfo.logicOpEnable = VK_FALSE;
+	colorBlendStateCreateInfo.logicOp = VK_LOGIC_OP_COPY;
+	colorBlendStateCreateInfo.attachmentCount = 1;
+
+	VkPipelineColorBlendAttachmentState colorBlendAttachment{};
+	colorBlendAttachment.colorWriteMask =
+		VK_COLOR_COMPONENT_R_BIT
+		| VK_COLOR_COMPONENT_G_BIT
+		| VK_COLOR_COMPONENT_B_BIT
+		| VK_COLOR_COMPONENT_A_BIT;
+	colorBlendAttachment.blendEnable = VK_FALSE;
+	colorBlendAttachment.srcColorBlendFactor = VK_BLEND_FACTOR_ONE;
+	colorBlendAttachment.dstColorBlendFactor = VK_BLEND_FACTOR_ZERO;
+	colorBlendAttachment.colorBlendOp = VK_BLEND_OP_ADD;
+	colorBlendAttachment.srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
+	colorBlendAttachment.dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO;
+	colorBlendAttachment.alphaBlendOp = VK_BLEND_OP_ADD;
+
+	colorBlendStateCreateInfo.pAttachments = &colorBlendAttachment;
+	colorBlendStateCreateInfo.blendConstants[0] = 0.f;
+	colorBlendStateCreateInfo.blendConstants[1] = 0.f;
+	colorBlendStateCreateInfo.blendConstants[2] = 0.f;
+	colorBlendStateCreateInfo.blendConstants[3] = 0.f;
+
+	/***********************************************************************/
+	VkGraphicsPipelineCreateInfo pipelineCreateInfo{};
+	pipelineCreateInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
+	pipelineCreateInfo.stageCount = static_cast<UINT>(m_mapSkyboxShaderModule.size());
+	pipelineCreateInfo.pStages = shaderStageCreateInfos;
+	pipelineCreateInfo.pDynamicState = VK_NULL_HANDLE;
+	pipelineCreateInfo.pVertexInputState = &vertexInputCreateInfo;
+	pipelineCreateInfo.pInputAssemblyState = &inputAssemblyCreateInfo;
+	pipelineCreateInfo.pViewportState = &viewportStateCreateInfo;
+	pipelineCreateInfo.pRasterizationState = &rasterizationStateCreateInfo;
+	pipelineCreateInfo.pMultisampleState = &multisamplingStateCreateInfo;
+	pipelineCreateInfo.pDepthStencilState = &depthStencilStateCreateInfo;
+	pipelineCreateInfo.pColorBlendState = &colorBlendStateCreateInfo;
+	pipelineCreateInfo.layout = m_SkyboxGraphicPipelineLayout;
+	pipelineCreateInfo.renderPass = m_RenderPass;
+	pipelineCreateInfo.subpass = 0;
+	pipelineCreateInfo.basePipelineHandle = VK_NULL_HANDLE;
+	pipelineCreateInfo.basePipelineIndex = -1;
+
+	VULKAN_ASSERT(vkCreateGraphicsPipelines(m_LogicalDevice, VK_NULL_HANDLE, 1, &pipelineCreateInfo, nullptr, &m_SkyboxGraphicPipeline), "Create skybox graphic pipeline failed");
+}
+
+void VulkanRenderer::CreateSkyboxUniformBuffers()
+{
+	m_vecSkyboxUniformBuffers.resize(m_vecSwapChainImages.size());
+	m_vecSkyboxUniformBufferMemories.resize(m_vecSwapChainImages.size());
+
+	for (size_t i = 0; i < m_vecSwapChainImages.size(); ++i)
+	{
+		CreateBufferAndBindMemory(sizeof(SkyboxUniformBufferObject),
+			VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
+			VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+			m_vecSkyboxUniformBuffers[i],
+			m_vecSkyboxUniformBufferMemories[i]
+		);
+	}
+}
+
+void VulkanRenderer::UpdateSkyboxUniformBuffer(UINT uiIdx)
+{
+	m_SkyboxUboData.modelView = m_Camera.GetViewMatrix();
+	m_SkyboxUboData.modelView[3] = glm::vec4(0.0f, 0.0f, 0.0f, 1.0f); //移除平移分量
+	m_SkyboxUboData.proj = m_Camera.GetProjMatrix();
+	//OpenGL与Vulkan的差异 - Y坐标是反的
+	m_SkyboxUboData.proj[1][1] *= -1.f;
+
+	void* uniformBufferData;
+	vkMapMemory(m_LogicalDevice, m_vecSkyboxUniformBufferMemories[uiIdx], 0, sizeof(SkyboxUniformBufferObject), 0, &uniformBufferData);
+	memcpy(uniformBufferData, &m_SkyboxUboData, sizeof(SkyboxUniformBufferObject));
+	vkUnmapMemory(m_LogicalDevice, m_vecSkyboxUniformBufferMemories[uiIdx]);
+}
+
+void VulkanRenderer::CreateSkyboxDescriptorSetLayout()
+{
+	//UniformBufferObject Binding
+	VkDescriptorSetLayoutBinding uboLayoutBinding{};
+	uboLayoutBinding.binding = 0; //对应Vertex Shader中的layout binding
+	uboLayoutBinding.descriptorCount = 1;
+	uboLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+	uboLayoutBinding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT; //只需要在vertex stage生效
+	uboLayoutBinding.pImmutableSamplers = nullptr;
+
+	//Cubemap ImageSampler Binding
+	VkDescriptorSetLayoutBinding CubemapSamplerLayoutBinding{};
+	CubemapSamplerLayoutBinding.binding = 1; ////对应Fragment Shader中的layout binding
+	CubemapSamplerLayoutBinding.descriptorCount = 1;
+	CubemapSamplerLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+	CubemapSamplerLayoutBinding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT; //只用于fragment stage
+	CubemapSamplerLayoutBinding.pImmutableSamplers = nullptr;
+
+	std::vector<VkDescriptorSetLayoutBinding> vecDescriptorLayoutBinding = {
+		uboLayoutBinding,
+		CubemapSamplerLayoutBinding,
+	};
+
+	VkDescriptorSetLayoutCreateInfo createInfo{};
+	createInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+	createInfo.bindingCount = static_cast<UINT>(vecDescriptorLayoutBinding.size());
+	createInfo.pBindings = vecDescriptorLayoutBinding.data();
+
+	VULKAN_ASSERT(vkCreateDescriptorSetLayout(m_LogicalDevice, &createInfo, nullptr, &m_SkyboxDescriptorSetLayout), "Create skybox descriptor layout failed");
+}
+
+void VulkanRenderer::CreateSkyboxDescriptorPool()
+{
+	//ubo
+	VkDescriptorPoolSize uboPoolSize{};
+	uboPoolSize.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+	uboPoolSize.descriptorCount = static_cast<UINT>(m_vecSwapChainImages.size());
+
+	//cubemap sampler
+	VkDescriptorPoolSize cubemapSamplerPoolSize{};
+	cubemapSamplerPoolSize.type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+	cubemapSamplerPoolSize.descriptorCount = static_cast<UINT>(m_vecSwapChainImages.size());
+
+	std::vector<VkDescriptorPoolSize> vecPoolSize = {
+		uboPoolSize,
+		cubemapSamplerPoolSize,
+	};
+
+	VkDescriptorPoolCreateInfo poolCreateInfo{};
+	poolCreateInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+	poolCreateInfo.poolSizeCount = static_cast<UINT>(vecPoolSize.size());
+	poolCreateInfo.pPoolSizes = vecPoolSize.data();
+	poolCreateInfo.maxSets = static_cast<UINT>(m_vecSwapChainImages.size());
+
+	VULKAN_ASSERT(vkCreateDescriptorPool(m_LogicalDevice, &poolCreateInfo, nullptr, &m_SkyboxDescriptorPool), "Create skybox descriptor pool failed");
+}
+
+void VulkanRenderer::CreateSkyboxDescriptorSets()
+{
+	VkDescriptorSetAllocateInfo allocInfo{};
+	allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+	allocInfo.descriptorSetCount = static_cast<UINT>(m_vecSwapChainImages.size());
+	allocInfo.descriptorPool = m_SkyboxDescriptorPool;
+
+	std::vector<VkDescriptorSetLayout> vecDupDescriptorSetLayout(m_vecSwapChainImages.size(), m_SkyboxDescriptorSetLayout);
+	allocInfo.pSetLayouts = vecDupDescriptorSetLayout.data();
+
+	m_vecSkyboxDescriptorSets.resize(m_vecSwapChainImages.size());
+	VULKAN_ASSERT(vkAllocateDescriptorSets(m_LogicalDevice, &allocInfo, m_vecSkyboxDescriptorSets.data()), "Allocate skybox desctiprot sets failed");
+
+	for (size_t i = 0; i < m_vecSwapChainImages.size(); ++i)
+	{
+		//ubo
+		VkDescriptorBufferInfo descriptorBufferInfo{};
+		descriptorBufferInfo.buffer = m_vecSkyboxUniformBuffers[i];
+		descriptorBufferInfo.offset = 0;
+		descriptorBufferInfo.range = sizeof(SkyboxUniformBufferObject);
+
+		VkWriteDescriptorSet uboWrite{};
+		uboWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+		uboWrite.dstSet = m_vecSkyboxDescriptorSets[i];
+		uboWrite.dstBinding = 0;
+		uboWrite.dstArrayElement = 0;
+		uboWrite.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+		uboWrite.descriptorCount = 1;
+		uboWrite.pBufferInfo = &descriptorBufferInfo;
+
+		//cubemap sampler
+		VkDescriptorImageInfo imageInfo{};
+		imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+		imageInfo.imageView = m_SkyboxTexture.m_ImageView;
+		imageInfo.sampler = m_SkyboxTexture.m_Sampler;
+
+		VkWriteDescriptorSet cubemapSamplerWrite{};
+		cubemapSamplerWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+		cubemapSamplerWrite.dstSet = m_vecSkyboxDescriptorSets[i];
+		cubemapSamplerWrite.dstBinding = 1;
+		cubemapSamplerWrite.dstArrayElement = 0;
+		cubemapSamplerWrite.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+		cubemapSamplerWrite.descriptorCount = 1;
+		cubemapSamplerWrite.pImageInfo = &imageInfo;
+
+		std::vector<VkWriteDescriptorSet> vecDescriptorWrite = {
+			uboWrite,
+			cubemapSamplerWrite,
+		};
+
+		vkUpdateDescriptorSets(m_LogicalDevice, static_cast<UINT>(vecDescriptorWrite.size()), vecDescriptorWrite.data(), 0, nullptr);
+	}
 }
 
 void VulkanRenderer::RecordCommandBuffer(VkCommandBuffer& commandBuffer, UINT uiIdx)
@@ -2096,7 +2245,25 @@ void VulkanRenderer::RecordCommandBuffer(VkCommandBuffer& commandBuffer, UINT ui
 
 	vkCmdBeginRenderPass(commandBuffer, &renderPassBeginInfo, VK_SUBPASS_CONTENTS_INLINE);
 
-	vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m_GraphicPipeline);
+	if (m_bEnableSkybox)
+	{
+		vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m_SkyboxGraphicPipeline);
+		VkBuffer skyboxVertexBuffers[] = {
+			m_SkyboxModel.m_VertexBuffer,
+		};
+		VkDeviceSize skyboxOffsets[]{ 0 };
+		vkCmdBindVertexBuffers(commandBuffer, 0, 1, skyboxVertexBuffers, skyboxOffsets);
+		vkCmdBindIndexBuffer(commandBuffer, m_SkyboxModel.m_IndexBuffer, 0, VK_INDEX_TYPE_UINT32);
+		vkCmdBindDescriptorSets(commandBuffer,
+			VK_PIPELINE_BIND_POINT_GRAPHICS,
+			m_SkyboxGraphicPipelineLayout,
+			0, 1,
+			&m_vecSkyboxDescriptorSets[uiIdx],
+			0, NULL);
+
+		vkCmdDrawIndexed(commandBuffer, static_cast<UINT>(m_SkyboxModel.m_vecIndices.size()), 1, 0, 0, 0);
+	}
+
 
 	if (m_bViewportAndScissorIsDynamic)
 	{
@@ -2115,13 +2282,14 @@ void VulkanRenderer::RecordCommandBuffer(VkCommandBuffer& commandBuffer, UINT ui
 		vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
 	}
 
+	vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m_GraphicPipeline);
 	VkBuffer vertexBuffers[] = {
-		m_VertexBuffer,
+		m_Model.m_VertexBuffer,
 	};
 	VkDeviceSize offsets[]{ 0 };
 	vkCmdBindVertexBuffers(commandBuffer, 0, 1, vertexBuffers, offsets);
 
-	vkCmdBindIndexBuffer(commandBuffer, m_IndexBuffer, 0, VK_INDEX_TYPE_UINT32);
+	vkCmdBindIndexBuffer(commandBuffer, m_Model.m_IndexBuffer, 0, VK_INDEX_TYPE_UINT32);
 
 	for (UINT i = 0; i < INSTANCE_NUM; ++i)
 	{
@@ -2137,12 +2305,13 @@ void VulkanRenderer::RecordCommandBuffer(VkCommandBuffer& commandBuffer, UINT ui
 			&uiDynamicOffset	//指定动态Uniform的偏移
 		);
 
-		vkCmdDrawIndexed(commandBuffer, static_cast<UINT>(m_Indices.size()), 1, 0, 0, 0);
+		vkCmdDrawIndexed(commandBuffer, static_cast<UINT>(m_Model.m_vecIndices.size()), 1, 0, 0, 0);
 	}
 
 	vkCmdEndRenderPass(commandBuffer);
 
-	//g_UI.RecordRenderPass(uiIdx);
+	if (ENABLE_GUI)
+		g_UI.RecordRenderPass(uiIdx);
 
 	VULKAN_ASSERT(vkEndCommandBuffer(commandBuffer), "End command buffer failed");
 }
@@ -2169,7 +2338,7 @@ void VulkanRenderer::UpdateUniformBuffer(UINT uiIdx)
 	for (UINT i = 0; i < INSTANCE_NUM; ++i)
 	{
 		pModelMat = (glm::mat4*)((size_t)m_DynamicUboData.model + (i * m_DynamicAlignment));
-		*pModelMat = glm::translate(glm::mat4(1.f), { ((float)i - (float)(INSTANCE_NUM / 2)) * 1.25f, 0.f, 0.f });
+		*pModelMat = glm::translate(glm::mat4(1.f), { ((float)i - (float)(INSTANCE_NUM / 2)) * m_fInstanceSpan, 0.f, 0.f });
 		//*pModelMat = glm::rotate(glm::mat4(1.f), i * time * 1.f, { 0.f, 0.f, 1.f }) * *pModelMat;
 		pTextureIdx = (float*)((size_t)m_DynamicUboData.fTextureIndex + (i * m_DynamicAlignment));
 		*pTextureIdx = (float)(i % INSTANCE_NUM);
@@ -2183,16 +2352,22 @@ void VulkanRenderer::UpdateUniformBuffer(UINT uiIdx)
 
 void VulkanRenderer::Render()
 {
-	m_uiFrameCounter++;
-
-	//if (!ImGui::IsWindowHovered(ImGuiHoveredFlags_AnyWindow) && !ImGui::IsAnyItemActive())
+	static bool bNeedResize = false;
+	
+	if (ENABLE_GUI && !ImGui::IsWindowHovered(ImGuiHoveredFlags_AnyWindow) && !ImGui::IsAnyItemActive())
 		m_Camera.Tick();
-
 
 	//等待fence的值变为signaled
 	vkWaitForFences(m_LogicalDevice, 1, &m_vecInFlightFences[m_uiCurFrameIdx], VK_TRUE, UINT64_MAX);
 
-	//g_UI.StartNewFrame();
+	if (bNeedResize)
+	{
+		WindowResize();
+		bNeedResize = false;
+	}
+
+	if (ENABLE_GUI)
+		g_UI.StartNewFrame();
 
 	uint32_t uiImageIdx;
 	VkResult res = vkAcquireNextImageKHR(m_LogicalDevice, m_SwapChain, UINT64_MAX,
@@ -2203,8 +2378,7 @@ void VulkanRenderer::Render()
 		{
 			//SwapChain与WindowSurface不兼容，无法继续渲染
 			//一般发生在window尺寸改变时
-			WindowResize();
-			//g_UI.Resize();
+			bNeedResize = true;
 			return;
 		}
 		else if (res == VK_SUBOPTIMAL_KHR)
@@ -2223,6 +2397,9 @@ void VulkanRenderer::Render()
 	vkResetCommandBuffer(m_vecCommandBuffers[m_uiCurFrameIdx], 0);
 
 	UpdateUniformBuffer(m_uiCurFrameIdx);
+
+	if (m_bEnableSkybox)
+		UpdateSkyboxUniformBuffer(m_uiCurFrameIdx);
 
 	RecordCommandBuffer(m_vecCommandBuffers[m_uiCurFrameIdx], uiImageIdx);
 
@@ -2279,8 +2456,7 @@ void VulkanRenderer::Render()
 	{
 		if (res == VK_ERROR_OUT_OF_DATE_KHR || res == VK_SUBOPTIMAL_KHR || m_bFrameBufferResized)
 		{
-			WindowResize();
-			//g_UI.Resize();
+			bNeedResize = true;
 			m_bFrameBufferResized = false;
 		}
 		else
@@ -2289,7 +2465,68 @@ void VulkanRenderer::Render()
 		}
 	}
 
+	m_uiFrameCounter++;
+
 	m_uiCurFrameIdx = (m_uiCurFrameIdx + 1) % static_cast<UINT>(m_vecSwapChainImages.size());
+}
+
+void VulkanRenderer::CleanWindowResizeResource()
+{
+	vkDestroyImageView(m_LogicalDevice, m_DepthImageView, nullptr);
+	vkDestroyImage(m_LogicalDevice, m_DepthImage, nullptr);
+	vkFreeMemory(m_LogicalDevice, m_DepthImageMemory, nullptr);
+
+	for (const auto& frameBuffer : m_vecSwapChainFrameBuffers)
+	{
+		vkDestroyFramebuffer(m_LogicalDevice, frameBuffer, nullptr);
+	}
+
+	for (const auto& imageView : m_vecSwapChainImageViews)
+	{
+		vkDestroyImageView(m_LogicalDevice, imageView, nullptr);
+		printf("Destroy Old ImageView:%p\n", imageView);
+	}
+	
+	for (auto& image : m_vecSwapChainImages)
+	{
+		printf("Destroy Old Image:%p\n", image);
+	}
+
+	vkFreeCommandBuffers(m_LogicalDevice, m_CommandPool, m_vecCommandBuffers.size(), m_vecCommandBuffers.data());
+
+	//清理SwapChain
+	vkDestroySwapchainKHR(m_LogicalDevice, m_SwapChain, nullptr);
+	vkDestroyPipeline(m_LogicalDevice, m_GraphicPipeline, nullptr);
+
+	if (ENABLE_GUI)
+		g_UI.CleanResizeResource();
+}
+
+void VulkanRenderer::RecreateWindowResizeResource()
+{
+	CreateSwapChain();
+
+	CreateDepthImage();
+	CreateDepthImageView();
+
+	CreateSwapChainImages();
+	for (auto& image : m_vecSwapChainImages)
+	{
+		printf("Create New Image:%p\n", image);
+	}
+	CreateSwapChainImageViews();
+	for (auto& imageView : m_vecSwapChainImageViews)
+	{
+		printf("Create New ImageView:%p\n", imageView);
+	}
+	CreateSwapChainFrameBuffers();
+
+	CreateCommandBuffer();
+
+	CreateGraphicPipeline();
+
+	if (ENABLE_GUI)
+		g_UI.RecreateResizeResource();
 }
 
 void VulkanRenderer::WindowResize()
@@ -2304,48 +2541,25 @@ void VulkanRenderer::WindowResize()
 		glfwWaitEvents();
 	}
 
+	m_Camera.SetViewportSize(nWidth, nHeight);
+
+	//需要重建的资源：
+	//1. 和窗口大小相关的：Depth(Image, Memory, ImageView)，SwapChain Image，Viewport/Stencil
+	//2. 引用了DepthImageView的：FrameBuffer
+	//3. 引用了SwapChain Image的：FrameBuffer
+	//4. 引用了FrameBuffer的：CommandBuffer(RenderPassBeginInfo)
+	//5. 引用了ViewportStencil的：Pipeline
+
 	//等待资源结束占用
 	vkDeviceWaitIdle(m_LogicalDevice);
+	CleanWindowResizeResource();
 
-	vkDestroyImageView(m_LogicalDevice, m_DepthImageView, nullptr);
-	vkDestroyImage(m_LogicalDevice, m_DepthImage, nullptr);
-	vkFreeMemory(m_LogicalDevice, m_DepthImageMemory, nullptr);
-
-	for (const auto& frameBuffer : m_vecSwapChainFrameBuffers)
-	{
-		vkDestroyFramebuffer(m_LogicalDevice, frameBuffer, nullptr);
-	}
-
-	for (const auto& imageView : m_vecSwapChainImageViews)
-	{
-		vkDestroyImageView(m_LogicalDevice, imageView, nullptr);
-	}
-
-	//for (const auto& image : m_vecSwapChainImages)
-	//{
-	//	vkDestroyImage(m_LogicalDevice, image, nullptr);
-	//}
-
-	//清理SwapChain
-	vkDestroySwapchainKHR(m_LogicalDevice, m_SwapChain, nullptr);
-	vkDestroyRenderPass(m_LogicalDevice, m_RenderPass, nullptr);
-	vkDestroyPipeline(m_LogicalDevice, m_GraphicPipeline, nullptr);
-
-	CreateSwapChain();
-	CreateRenderPass();
-
-	CreateSwapChainImages();
-	CreateSwapChainImageViews();
-	CreateSwapChainFrameBuffers();
-	
-	CreateGraphicPipeline();
-
-	m_Camera.SetViewportSize(nWidth, nHeight);
+	vkDeviceWaitIdle(m_LogicalDevice);
+	RecreateWindowResizeResource();
 }
 
-DZW_VulkanWrap::Texture& VulkanRenderer::LoadTexture(const std::filesystem::path& filepath)
+void VulkanRenderer::LoadTexture(const std::filesystem::path& filepath, DZW_VulkanWrap::Texture& texture)
 {
-	DZW_VulkanWrap::Texture texture;
 	texture.m_Filepath = filepath;
 
 	if (texture.IsKtxTexture())
@@ -2374,7 +2588,7 @@ DZW_VulkanWrap::Texture& VulkanRenderer::LoadTexture(const std::filesystem::path
 			ASSERT(texture.m_uiLayerNum <= uiMaxLayerNum, std::format("TextureArray {} layout count {} exceed max limit {}", texture.m_Filepath.string(), texture.m_uiLayerNum, uiMaxLayerNum));
 		}
 
-		CreateImageAndBindMemory(texture.m_uiWidth, texture.m_uiHeight, texture.m_uiMipLevelNum, texture.m_uiLayerNum,
+		CreateImageAndBindMemory(texture.m_uiWidth, texture.m_uiHeight, texture.m_uiMipLevelNum, texture.m_uiLayerNum, texture.m_uiFaceNum,
 			VK_SAMPLE_COUNT_1_BIT,
 			VK_FORMAT_R8G8B8A8_SRGB,
 			VK_IMAGE_TILING_OPTIMAL,
@@ -2387,6 +2601,7 @@ DZW_VulkanWrap::Texture& VulkanRenderer::LoadTexture(const std::filesystem::path
 			VK_FORMAT_R8G8B8A8_SRGB,				//image format
 			texture.m_uiMipLevelNum,				//mipmap levels
 			texture.m_uiLayerNum,					//layers
+			texture.m_uiFaceNum,					//faces
 			VK_IMAGE_LAYOUT_UNDEFINED,				//src layout
 			VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);	//dst layout
 
@@ -2413,7 +2628,8 @@ DZW_VulkanWrap::Texture& VulkanRenderer::LoadTexture(const std::filesystem::path
 
 		texture.m_Size = texture.m_uiWidth * texture.m_uiHeight * static_cast<UINT>(nTexChannel);
 
-		CreateImageAndBindMemory(texture.m_uiWidth, texture.m_uiHeight, texture.m_uiMipLevelNum, texture.m_uiLayerNum,
+		CreateImageAndBindMemory(texture.m_uiWidth, texture.m_uiHeight, 
+			texture.m_uiMipLevelNum, texture.m_uiLayerNum, texture.m_uiFaceNum, 
 			VK_SAMPLE_COUNT_1_BIT,
 			VK_FORMAT_R8G8B8A8_SRGB,
 			VK_IMAGE_TILING_OPTIMAL,
@@ -2426,6 +2642,7 @@ DZW_VulkanWrap::Texture& VulkanRenderer::LoadTexture(const std::filesystem::path
 			VK_FORMAT_R8G8B8A8_SRGB,				//image format
 			texture.m_uiMipLevelNum,				//mipmap levels
 			texture.m_uiLayerNum,					//layers
+			texture.m_uiFaceNum,					//faces
 			VK_IMAGE_LAYOUT_UNDEFINED,				//src layout
 			VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);	//dst layout
 
@@ -2442,19 +2659,285 @@ DZW_VulkanWrap::Texture& VulkanRenderer::LoadTexture(const std::filesystem::path
 		VK_FORMAT_R8G8B8A8_SRGB,
 		texture.m_uiMipLevelNum,
 		texture.m_uiLayerNum,
+		texture.m_uiFaceNum,
 		VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
 		VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 	
 	//generateMipmaps(m_TextureImage, VK_FORMAT_R8G8B8A8_SRGB, nTexWidth, nTexHeight, m_uiMipmapLevel);
 
-	texture.m_ImageView = CreateImageView(texture.m_Image, VK_IMAGE_VIEW_TYPE_2D_ARRAY,
+	texture.m_ImageView = CreateImageView(texture.m_Image, 
 		VK_FORMAT_R8G8B8A8_SRGB,	//格式为sRGB
 		VK_IMAGE_ASPECT_COLOR_BIT,	//aspectFlags为COLOR_BIT
 		texture.m_uiMipLevelNum,
-		texture.m_uiLayerNum
+		texture.m_uiLayerNum,
+		texture.m_uiFaceNum
 	);
 
-	return texture;
+	VkSamplerCreateInfo createInfo{};
+	createInfo.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
+	//设置过采样与欠采样时的采样方法，可以是nearest，linear，cubic等
+	createInfo.magFilter = VK_FILTER_LINEAR;
+	createInfo.minFilter = VK_FILTER_LINEAR;
+
+	//设置纹理采样超出边界时的寻址模式，可以是repeat，mirror，clamp to edge，clamp to border等
+	createInfo.addressModeU = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+	createInfo.addressModeV = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+	createInfo.addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+
+	//设置是否开启各向异性过滤，你的硬件不一定支持Anisotropy，需要确认硬件支持该preperty
+	createInfo.anisotropyEnable = VK_FALSE;
+	if (createInfo.anisotropyEnable == VK_TRUE)
+	{
+		auto& physicalDeviceProperties = m_mapPhysicalDeviceInfo.at(m_PhysicalDevice).properties;
+		createInfo.maxAnisotropy = physicalDeviceProperties.limits.maxSamplerAnisotropy;
+	}
+
+	//设置寻址模式为clamp to border时的填充颜色
+	createInfo.borderColor = VK_BORDER_COLOR_INT_OPAQUE_BLACK;
+
+	//如果为true，则坐标为[0, texWidth), [0, texHeight)
+	//如果为false，则坐标为传统的[0, 1), [0, 1)
+	createInfo.unnormalizedCoordinates = VK_FALSE;
+
+	//设置是否开启比较与对比较结果的操作，通常用于百分比邻近滤波（Shadow Map PCS）
+	createInfo.compareEnable = VK_FALSE;
+	createInfo.compareOp = VK_COMPARE_OP_ALWAYS;
+
+	//设置mipmap相关参数
+	createInfo.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
+	createInfo.mipLodBias = 0.f;
+	createInfo.minLod = 0.f;
+	createInfo.maxLod = static_cast<float>(m_Texture.m_uiMipLevelNum);
+
+	VULKAN_ASSERT(vkCreateSampler(m_LogicalDevice, &createInfo, nullptr, &texture.m_Sampler), "Create texture sampler failed");
+}
+
+void VulkanRenderer::FreeTexture(DZW_VulkanWrap::Texture& texture)
+{
+	vkDestroySampler(m_LogicalDevice, texture.m_Sampler, nullptr);
+
+	vkDestroyImageView(m_LogicalDevice, texture.m_ImageView, nullptr);
+	vkDestroyImage(m_LogicalDevice, texture.m_Image, nullptr);
+	vkFreeMemory(m_LogicalDevice, texture.m_Memory, nullptr);
+}
+
+void VulkanRenderer::LoadOBJ(DZW_VulkanWrap::Model& model)
+{
+	tinyobj::attrib_t attr;	//存储所有顶点、法线、UV坐标
+	std::vector<tinyobj::shape_t> vecShapes;
+	std::vector<tinyobj::material_t> vecMaterials;
+	std::string strWarning;
+	std::string strError;
+
+	bool res = tinyobj::LoadObj(&attr, &vecShapes, &vecMaterials, &strWarning, &strError, model.m_Filepath.string().c_str());
+	ASSERT(res, std::format("Load obj file {} failed", model.m_Filepath.string().c_str()));
+
+	model.m_vecVertices.clear();
+	model.m_vecIndices.clear();
+
+	std::unordered_map<Vertex3D, uint32_t> mapUniqueVertices;
+
+	for (const auto& shape : vecShapes)
+	{
+		for (const auto& index : shape.mesh.indices)
+		{
+			Vertex3D vert{};
+			vert.pos = {
+				attr.vertices[3 * static_cast<uint64_t>(index.vertex_index) + 0],
+				attr.vertices[3 * static_cast<uint64_t>(index.vertex_index) + 1],
+				attr.vertices[3 * static_cast<uint64_t>(index.vertex_index) + 2],
+			};
+			vert.texCoord = {
+				attr.texcoords[2 * static_cast<uint64_t>(index.texcoord_index) + 0],
+				1.f - attr.texcoords[2 * static_cast<uint64_t>(index.texcoord_index) + 1],
+			};
+			vert.color = glm::vec3(1.f, 1.f, 1.f);
+
+			model.m_vecVertices.push_back(vert);
+			model.m_vecIndices.push_back(static_cast<uint32_t>(model.m_vecIndices.size()));
+		}
+	}
+}
+
+void VulkanRenderer::LoadGLTF(DZW_VulkanWrap::Model& model)
+{
+	tinygltf::Model gltfModel;
+	tinygltf::TinyGLTF gltfLoader;
+
+	std::string err;
+	std::string warn;
+	bool ret = false;
+
+	if (model.m_Filepath.extension().string() == ".glb")
+		ret = gltfLoader.LoadBinaryFromFile(&gltfModel, &err, &warn, model.m_Filepath.string());
+	else if (model.m_Filepath.extension().string() == ".gltf")
+		ret = gltfLoader.LoadASCIIFromFile(&gltfModel, &err, &warn, model.m_Filepath.string());
+
+	if (!warn.empty())
+		Log::Warn(std::format("Load gltf warn: {}", warn.c_str()));
+
+	if (!err.empty())
+		Log::Error(std::format("Load gltf error: {}", err.c_str()));
+
+	ASSERT(ret, "Load gltf failed");
+
+	model.m_vecVertices.clear();
+	model.m_vecIndices.clear();
+
+	for (size_t i = 0; i < gltfModel.scenes.size(); ++i)
+	{
+		DZW_VulkanWrap::Model::Scene scene;
+		const tinygltf::Scene& gltfScene = gltfModel.scenes[i];
+		for (size_t j = 0; j < gltfScene.nodes.size(); ++j)
+		{
+			DZW_VulkanWrap::Model::Node node;
+			node.nIndex = gltfScene.nodes[j];
+
+			const tinygltf::Node& gltfNode = gltfModel.nodes[node.nIndex];
+			DZW_VulkanWrap::Model::Mesh mesh;
+			mesh.nIndex = gltfNode.mesh;
+			if (mesh.nIndex >= 0)
+			{
+				const tinygltf::Mesh& gltfMesh = gltfModel.meshes[mesh.nIndex];
+				for (size_t k = 0; k < gltfMesh.primitives.size(); ++k)
+				{
+					uint32_t vertexStart = static_cast<uint32_t>(model.m_vecVertices.size());
+
+					DZW_VulkanWrap::Model::Primitive primitive;
+					primitive.uiFirstIndex = static_cast<uint32_t>(model.m_vecIndices.size());
+
+
+					const tinygltf::Primitive& gltfPrimitive = gltfMesh.primitives[k];
+
+					//获取vertex数据
+					//pos
+					const int positionAccessorIndex = gltfPrimitive.attributes.find("POSITION")->second;
+					const tinygltf::Accessor& positionAccessor = gltfModel.accessors[positionAccessorIndex];
+					const tinygltf::BufferView& positionBufferView = gltfModel.bufferViews[positionAccessor.bufferView];
+					const tinygltf::Buffer& positionBuffer = gltfModel.buffers[positionBufferView.buffer];
+					const float* positions = reinterpret_cast<const float*>(&(positionBuffer.data[positionBufferView.byteOffset + positionAccessor.byteOffset]));
+
+					//normal
+					const int normalAccessorIndex = gltfPrimitive.attributes.find("NORMAL")->second;
+					const tinygltf::Accessor& normalAccessor = gltfModel.accessors[normalAccessorIndex];
+					const tinygltf::BufferView& normalBufferView = gltfModel.bufferViews[normalAccessor.bufferView];
+					const tinygltf::Buffer& normalBuffer = gltfModel.buffers[normalBufferView.buffer];
+					const float* normals = reinterpret_cast<const float*>(&(normalBuffer.data[normalBufferView.byteOffset + normalAccessor.byteOffset]));
+
+					//texcoord
+					const int texcoordAccessorIndex = gltfPrimitive.attributes.find("TEXCOORD_0")->second;
+					const tinygltf::Accessor& texcoordAccessor = gltfModel.accessors[texcoordAccessorIndex];
+					const tinygltf::BufferView& texcoordBufferView = gltfModel.bufferViews[texcoordAccessor.bufferView];
+					const tinygltf::Buffer& texcoordBuffer = gltfModel.buffers[texcoordBufferView.buffer];
+					const float* texcoords = reinterpret_cast<const float*>(&(texcoordBuffer.data[texcoordBufferView.byteOffset + texcoordAccessor.byteOffset]));
+
+					for (size_t v = 0; v < positionAccessor.count; v++)
+					{
+						Vertex3D vert{};
+						vert.pos = glm::make_vec3(&positions[v * 3]);
+						vert.normal = glm::normalize(glm::vec3(normals ? glm::make_vec3(&normals[v * 3]) : glm::vec3(0.0f)));
+						vert.texCoord = texcoords ? glm::make_vec2(&texcoords[v * 2]) : glm::vec3(0.0f);
+						vert.color = glm::vec3(1.0f);
+						model.m_vecVertices.push_back(vert);
+					}
+
+					//获取Index数据
+					if (gltfPrimitive.indices >= 0)
+					{
+						UINT uiIndexCount = 0;
+						const int indicesAccessorIndex = gltfPrimitive.indices;
+						const tinygltf::Accessor& indicesAccessor = gltfModel.accessors[indicesAccessorIndex];
+						const tinygltf::BufferView& indicesBufferView = gltfModel.bufferViews[indicesAccessor.bufferView];
+						const tinygltf::Buffer& indicesBuffer = gltfModel.buffers[indicesBufferView.buffer];
+
+						primitive.uiIndexCount += indicesAccessor.count;
+
+						switch (indicesAccessor.componentType) {
+						case TINYGLTF_PARAMETER_TYPE_UNSIGNED_INT: {
+							uint32_t* buf = new uint32_t[indicesAccessor.count];
+							memcpy(buf, &indicesBuffer.data[indicesAccessor.byteOffset + indicesBufferView.byteOffset], indicesAccessor.count * sizeof(uint32_t));
+							for (size_t index = 0; index < indicesAccessor.count; index++) {
+								model.m_vecIndices.push_back(buf[index] + vertexStart);
+							}
+							delete[] buf;
+							break;
+						}
+						case TINYGLTF_PARAMETER_TYPE_UNSIGNED_SHORT: {
+							uint16_t* buf = new uint16_t[indicesAccessor.count];
+							memcpy(buf, &indicesBuffer.data[indicesAccessor.byteOffset + indicesBufferView.byteOffset], indicesAccessor.count * sizeof(uint16_t));
+							for (size_t index = 0; index < indicesAccessor.count; index++) {
+								model.m_vecIndices.push_back(buf[index] + vertexStart);
+							}
+							delete[] buf;
+							break;
+						}
+						case TINYGLTF_PARAMETER_TYPE_UNSIGNED_BYTE: {
+							uint8_t* buf = new uint8_t[indicesAccessor.count];
+							memcpy(buf, &indicesBuffer.data[indicesAccessor.byteOffset + indicesBufferView.byteOffset], indicesAccessor.count * sizeof(uint8_t));
+							for (size_t index = 0; index < indicesAccessor.count; index++) {
+								model.m_vecIndices.push_back(buf[index] + vertexStart);
+							}
+							delete[] buf;
+							break;
+						}
+						default:
+							ASSERT(false, "Unsupport index component type");
+							return;
+						}
+					}
+
+					mesh.vecPrimitives.push_back(primitive);
+				}
+			}
+
+			node.mesh = mesh;
+			scene.vecNodes.push_back(node);
+		}
+		model.m_vecScenes.push_back(scene);
+	}
+}
+
+void VulkanRenderer::LoadModel(const std::filesystem::path& filepath, DZW_VulkanWrap::Model& model)
+{
+	model.m_Filepath = filepath;
+
+	if (model.IsGLTF())
+		LoadGLTF(model);
+	else if (model.IsOBJ())
+		LoadOBJ(model);
+	else
+		ASSERT(false, "Unsupport model type");
+
+	Log::Info(std::format("Vertex count : {}", model.m_vecVertices.size()));
+	ASSERT(model.m_vecVertices.size() > 0, "Vertex data empty");
+	VkDeviceSize verticesSize = sizeof(model.m_vecVertices[0]) * model.m_vecVertices.size();
+	CreateBufferAndBindMemory(verticesSize,
+		VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+		VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+		model.m_VertexBuffer, model.m_VertexBufferMemory);
+	TransferBufferDataByStageBuffer(model.m_vecVertices.data(), verticesSize, model.m_VertexBuffer);
+
+
+	Log::Info(std::format("Index count : {}", model.m_vecIndices.size()));
+	VkDeviceSize indicesSize = sizeof(model.m_vecIndices[0]) * model.m_vecIndices.size();
+	if (indicesSize > 0)
+	CreateBufferAndBindMemory(indicesSize,
+		VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT,
+		VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+		model.m_IndexBuffer, model.m_IndexBufferMemory);
+	TransferBufferDataByStageBuffer(model.m_vecIndices.data(), indicesSize, model.m_IndexBuffer);
+}
+
+void VulkanRenderer::FreeModel(DZW_VulkanWrap::Model& model)
+{
+	vkFreeMemory(m_LogicalDevice, model.m_VertexBufferMemory, nullptr);
+	vkDestroyBuffer(m_LogicalDevice, model.m_VertexBuffer, nullptr);
+
+	if (model.m_vecIndices.size() > 0)
+	{
+		vkFreeMemory(m_LogicalDevice, model.m_IndexBufferMemory, nullptr);
+		vkDestroyBuffer(m_LogicalDevice, model.m_IndexBuffer, nullptr);
+	}
 }
 
 

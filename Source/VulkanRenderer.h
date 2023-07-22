@@ -1,5 +1,6 @@
 #pragma once
 
+
 #define GLFW_INCLUDE_VULKAN
 #include "GLFW/glfw3.h"
 
@@ -12,57 +13,20 @@
 
 #include "VulkanWrap.h"
 
-struct Vertex3D
+namespace std
 {
-	glm::vec3 pos;
-	glm::vec3 color;
-	glm::vec2 texCoord;
-	glm::vec3 normal;
-
-	static VkVertexInputBindingDescription GetBindingDescription()
+	template<> struct hash<Vertex3D>
 	{
-		VkVertexInputBindingDescription bindingDescription{};
-		bindingDescription.binding = 0; //在binding array中的Idx
-		bindingDescription.stride = sizeof(Vertex3D);	//所占字节数
-		bindingDescription.inputRate = VK_VERTEX_INPUT_RATE_VERTEX; //传输速率，分为vertex或instance
-
-		return bindingDescription;
-	}
-
-	static std::array<VkVertexInputAttributeDescription, 3> GetAttributeDescriptions()
-	{
-		std::array<VkVertexInputAttributeDescription, 3> attributeDescriptions{};
-		attributeDescriptions[0].binding = 0;
-		attributeDescriptions[0].location = 0; //layout (location = 0) in vec3 inPosition;
-		attributeDescriptions[0].format = VK_FORMAT_R32G32B32_SFLOAT;
-		attributeDescriptions[0].offset = offsetof(Vertex3D, pos);
-
-		attributeDescriptions[1].binding = 0;
-		attributeDescriptions[1].location = 1; //layout(location = 1) in vec3 inColor;
-		attributeDescriptions[1].format = VK_FORMAT_R32G32B32_SFLOAT;
-		attributeDescriptions[1].offset = offsetof(Vertex3D, color);
-
-		attributeDescriptions[2].binding = 0;
-		attributeDescriptions[2].location = 2; //layout (location = 2) in vec2 inTexCoord;
-		attributeDescriptions[2].format = VK_FORMAT_R32G32_SFLOAT;
-		attributeDescriptions[2].offset = offsetof(Vertex3D, texCoord);
-
-		attributeDescriptions[2].binding = 0;
-		attributeDescriptions[2].location = 2; //layout (location = 2) in vec3 inNormal;
-		attributeDescriptions[2].format = VK_FORMAT_R32G32B32_SFLOAT;
-		attributeDescriptions[2].offset = offsetof(Vertex3D, normal);
-
-		return attributeDescriptions;
-	}
-
-	bool operator==(const Vertex3D& other) const
-	{
-		return (pos == other.pos) 
-			&& (texCoord == other.texCoord) 
-			&& (color == other.color) 
-			&& (normal == other.normal);
-	}
-};
+		size_t operator()(Vertex3D const& vertex) const
+		{
+			size_t h1 = hash<glm::vec3>()(vertex.pos);
+			size_t h2 = hash<glm::vec3>()(vertex.color);
+			size_t h3 = hash<glm::vec2>()(vertex.texCoord);
+			size_t h4 = hash<glm::vec3>()(vertex.normal);
+			return h1 ^ (h2 << 1) ^ (h3 << 2) ^ (h4 << 3);
+		}
+	};
+}
 
 struct SwapChainSupportInfo
 {
@@ -108,18 +72,7 @@ struct PhysicalDeviceInfo
 	VkPhysicalDeviceMemoryProperties memoryProperties;
 };
 
-namespace std
-{
-	template<> struct hash<Vertex3D>
-	{
-		size_t operator()(Vertex3D const& vertex) const
-		{
-			return ((hash<glm::vec3>()(vertex.pos) ^
-				(hash<glm::vec3>()(vertex.color) << 1)) >> 1) ^
-				(hash<glm::vec2>()(vertex.texCoord) << 1);
-		}
-	};
-}
+
 
 class VulkanRenderer
 {
@@ -132,10 +85,6 @@ public:
 	void Init();
 	void Loop();
 	void Clean();
-
-	void LoadOBJ(const std::filesystem::path& modelPath);
-	void LoadGLTF(const std::filesystem::path& modelPath);
-	void LoadModel(const std::filesystem::path& modelPath);
 
 private:
 	static void FrameBufferResizeCallBack(GLFWwindow* pWindow, int nWidth, int nHeight);
@@ -189,7 +138,11 @@ private:
 
 	VkSurfaceFormatKHR ChooseUISwapChainSurfaceFormat(const std::vector<VkSurfaceFormatKHR>& vecAvailableFormats);
 
-	VkImageView CreateImageView(VkImage image, VkImageViewType viewType, VkFormat format, VkImageAspectFlags aspectFlags, UINT uiMipLevelCount, UINT uiLayerCount);
+	VkImageView CreateImageView(VkImage image, VkFormat format, VkImageAspectFlags aspectFlags, UINT uiMipLevelCount, UINT uiLayerCount, UINT uiFaceCount);
+
+	void CreateDepthImage();
+	void CreateDepthImageView();
+
 	void CreateSwapChainImages();
 	void CreateSwapChainImageViews();
 	void CreateSwapChainFrameBuffers();
@@ -225,16 +178,13 @@ private:
 		VkMemoryPropertyFlags propertyFlags, VkBuffer& buffer, VkDeviceMemory& bufferMemory);
 	void CreateUniformBuffers();
 
-
-	void CreateTextureSampler();
-
 	void AllocateImageMemory(VkMemoryPropertyFlags propertyFlags, VkImage& image, VkDeviceMemory& bufferMemory);
-	void CreateImageAndBindMemory(UINT uiWidth, UINT uiHeight, UINT uiMipLevelCount, UINT uiLayerCount,
+	void CreateImageAndBindMemory(UINT uiWidth, UINT uiHeight, UINT uiMipLevelCount, UINT uiLayerCount, UINT uiFaceCount,
 		VkSampleCountFlagBits sampleCount, VkFormat format,
 		VkImageTiling tiling, VkImageUsageFlags usage, VkMemoryPropertyFlags properties,
 		VkImage& image, VkDeviceMemory& imageMemory);
 	bool CheckFormatHasStencilComponent(VkFormat format);
-	void ChangeImageLayout(VkImage image, VkFormat format, UINT uiMipLevelCount, UINT uiLayerCount, VkImageLayout oldLayout, VkImageLayout newLayout);
+	void ChangeImageLayout(VkImage image, VkFormat format, UINT uiMipLevelCount, UINT uiLayerCount, UINT uiFaceCount, VkImageLayout oldLayout, VkImageLayout newLayout);
 	void TransferImageDataByStageBuffer(void* pData, VkDeviceSize imageSize, VkImage& image, UINT uiWidth, UINT uiHeight, DZW_VulkanWrap::Texture& texture, ktxTexture* pKtxTexture);
 	//void CreateTextureImageAndFillData();
 	//void CreateTextureImageView();
@@ -246,12 +196,10 @@ private:
 
 	void TransferBufferDataByStageBuffer(void* pData, VkDeviceSize imageSize, VkBuffer& buffer);
 
-	void CreateVertexBuffer();
-	void CreateIndexBuffer();
-
 	void CreateCommandPool();
 	void CreateCommandBuffer();
 
+	void CreateGraphicPipelineLayout();
 	void CreateGraphicPipeline();
 
 	void CreateSyncObjects();
@@ -261,10 +209,20 @@ private:
 	void UpdateUniformBuffer(UINT uiIdx);
 	void Render();
 
+	void CleanWindowResizeResource();
+	void RecreateWindowResizeResource();
+
+
 	void WindowResize();
 
 private:
-	DZW_VulkanWrap::Texture& LoadTexture(const std::filesystem::path& filepath);
+	void LoadTexture(const std::filesystem::path& filepath, DZW_VulkanWrap::Texture& texture);
+	void FreeTexture(DZW_VulkanWrap::Texture& texture);
+
+	void LoadOBJ(DZW_VulkanWrap::Model& model);
+	void LoadGLTF(DZW_VulkanWrap::Model& model);
+	void LoadModel(const std::filesystem::path& filepath, DZW_VulkanWrap::Model& model);
+	void FreeModel(DZW_VulkanWrap::Model& model);
 
 public:
 	Camera m_Camera;
@@ -274,7 +232,7 @@ public:
 	UINT m_uiFrameCounter;
 	UINT GetFPS() { return m_uiFPS; }
 
-
+public:
 	GLFWwindow* GetWindow() { return m_pWindow; }
 	VkInstance& GetInstance() { return m_Instance; }
 	VkPhysicalDevice& GetPhysicalDevice() { return m_PhysicalDevice; }
@@ -304,6 +262,32 @@ public:
 	UINT GetTextureMaxLod() { return m_Texture.m_uiMipLevelNum; }
 
 	VkCommandBuffer& GetCommandBuffer(UINT uiIdx) { return m_vecCommandBuffers[uiIdx]; }
+
+	glm::vec3 GetCameraPosition() { return m_Camera.GetPosition(); }
+
+	void SetSkyboxEnable(bool bEnable) { m_bEnableSkybox = bEnable; }
+	bool* GetSkyboxEnable() { return &m_bEnableSkybox; }
+
+	float* GetInstanceSpan() { return &m_fInstanceSpan; }
+
+public:
+	struct SkyboxUniformBufferObject
+	{
+		glm::mat4 modelView;
+		glm::mat4 proj;
+	};
+
+	void CreateSkyboxShader();
+
+	void CreateSkyboxGraphicPipelineLayout();
+	void CreateSkyboxGraphicPipeline();
+
+	void CreateSkyboxUniformBuffers();
+	void UpdateSkyboxUniformBuffer(UINT uiIdx);
+
+	void CreateSkyboxDescriptorSetLayout();
+	void CreateSkyboxDescriptorPool();
+	void CreateSkyboxDescriptorSets();
 
 private:
 	UINT m_uiWindowWidth;
@@ -357,7 +341,6 @@ private:
 
 	VkCommandPool m_TransferCommandPool;
 
-
 	std::unordered_map<VkShaderStageFlagBits, std::filesystem::path> m_mapShaderPath;
 	std::unordered_map<VkShaderStageFlagBits, VkShaderModule> m_mapShaderModule;
 
@@ -366,29 +349,15 @@ private:
 	UniformBufferObject m_UboData;
 	size_t m_UboBufferSize;
 
-	std::vector<VkBuffer> m_vecDynamicUniformBuffers;
-	std::vector<VkDeviceMemory> m_vecDynamicUniformBufferMemories;
-	size_t m_DynamicAlignment;
-	DynamicUniformBufferObject m_DynamicUboData;
-	size_t m_DynamicUboBufferSize;
-
-	VkSampler m_TextureSampler;
-
 	DZW_VulkanWrap::Texture m_Texture;
+
+	DZW_VulkanWrap::Model m_Model;
 
 	VkDescriptorSetLayout m_DescriptorSetLayout;
 	VkDescriptorPool m_DescriptorPool;
 	std::vector<VkDescriptorSet> m_vecDescriptorSets;
 
 	std::filesystem::path m_ModelPath;
-
-	VkBuffer m_VertexBuffer;
-	VkDeviceMemory m_VertexBufferMemory;
-	std::vector<Vertex3D> m_Vertices;
-
-	VkBuffer m_IndexBuffer;
-	VkDeviceMemory m_IndexBufferMemory;
-	std::vector<UINT> m_Indices;
 
 	VkCommandPool m_CommandPool;
 	std::vector<VkCommandBuffer> m_vecCommandBuffers;
@@ -403,4 +372,27 @@ private:
 	std::vector<VkFence> m_vecInFlightFences;
 
 	UINT m_uiCurFrameIdx;
+
+	float m_fInstanceSpan = 50.f;
+
+	//Dynamic Uniform
+	std::vector<VkBuffer> m_vecDynamicUniformBuffers;
+	std::vector<VkDeviceMemory> m_vecDynamicUniformBufferMemories;
+	size_t m_DynamicAlignment;
+	DynamicUniformBufferObject m_DynamicUboData;
+	size_t m_DynamicUboBufferSize;
+
+	//Skybox
+	bool m_bEnableSkybox = false;
+	DZW_VulkanWrap::Texture m_SkyboxTexture;
+	DZW_VulkanWrap::Model m_SkyboxModel;
+	VkPipelineLayout m_SkyboxGraphicPipelineLayout;
+	VkPipeline m_SkyboxGraphicPipeline;
+	std::unordered_map<VkShaderStageFlagBits, VkShaderModule> m_mapSkyboxShaderModule;
+	SkyboxUniformBufferObject m_SkyboxUboData;
+	std::vector<VkBuffer> m_vecSkyboxUniformBuffers;
+	std::vector<VkDeviceMemory> m_vecSkyboxUniformBufferMemories;
+	VkDescriptorSetLayout m_SkyboxDescriptorSetLayout;
+	VkDescriptorPool m_SkyboxDescriptorPool;
+	std::vector<VkDescriptorSet> m_vecSkyboxDescriptorSets;
 };

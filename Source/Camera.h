@@ -35,6 +35,8 @@ public:
 	glm::vec3 GetForwardDirection() const;
 
 	const glm::vec3& GetPosition() { return m_Position; }
+	void SetPosition(const glm::vec3& pos) { m_Position = pos; }
+
 	glm::quat GetOrientation() const;
 
 	float GetPitch() const { return m_fPitch; }
@@ -73,7 +75,7 @@ private:
 	glm::vec3 m_Position = { 0.f, 0.f, 5.f };
 	glm::vec3 m_FocalPoint = { 0.f, 0.f, 0.f };
 
-	float m_fDistance = 5.f;
+	float m_fDistance = 100.f;
 
 	float m_fPitch = 0.f;
 	float m_fYaw = 0.f;
