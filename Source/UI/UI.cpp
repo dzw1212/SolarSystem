@@ -157,6 +157,14 @@ void UI::Draw()
 
     ImGui::Checkbox("Skybox", m_pRenderer->GetSkyboxEnable());
 
+    ImGui::CollapsingHeader("Mesh Grid");
+    ImGui::Checkbox("Enable", m_pRenderer->GetMeshGridEnable());
+    if (ImGui::DragFloat("Size", m_pRenderer->GetMeshGridSize(), 1.f, 100.f, 1000.f, "%.1f"))
+        m_pRenderer->RecreateMeshGrid();
+    if (ImGui::DragFloat("Split", m_pRenderer->GetMeshGridSplit(), 1.f, 1.f, 100.f, "%.1f"))
+        m_pRenderer->RecreateMeshGrid();
+
+
     ImGui::End();
 }
 

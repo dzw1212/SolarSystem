@@ -6,6 +6,7 @@ obj/
 Submodule/
 Assert/Model/
 Assert/Texture/
+Assert/Font/
 *.sln
 *.vcxproj
 *.vcxproj.user

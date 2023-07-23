@@ -265,8 +265,11 @@ public:
 
 	glm::vec3 GetCameraPosition() { return m_Camera.GetPosition(); }
 
-	void SetSkyboxEnable(bool bEnable) { m_bEnableSkybox = bEnable; }
 	bool* GetSkyboxEnable() { return &m_bEnableSkybox; }
+
+	bool* GetMeshGridEnable() { return &m_bEnableMeshGrid; }
+	float* GetMeshGridSize() { return &m_fMeshGridSize; }
+	float* GetMeshGridSplit() { return &m_fMeshGridSplit; }
 
 	float* GetInstanceSpan() { return &m_fInstanceSpan; }
 
@@ -279,15 +282,43 @@ public:
 
 	void CreateSkyboxShader();
 
-	void CreateSkyboxGraphicPipelineLayout();
-	void CreateSkyboxGraphicPipeline();
-
 	void CreateSkyboxUniformBuffers();
 	void UpdateSkyboxUniformBuffer(UINT uiIdx);
 
 	void CreateSkyboxDescriptorSetLayout();
 	void CreateSkyboxDescriptorPool();
 	void CreateSkyboxDescriptorSets();
+
+	void CreateSkyboxGraphicPipelineLayout();
+	void CreateSkyboxGraphicPipeline();
+
+public:
+	struct MeshGridUniformBufferObject
+	{
+		glm::mat4 model;
+		glm::mat4 view;
+		glm::mat4 proj;
+	};
+
+	void CalcMeshGridVertexData();
+	void CalcMeshGridIndexData();
+
+	void RecreateMeshGrid();
+
+	void CreateMeshGridVertexBuffer();
+	void CreateMeshGridIndexBuffer();
+
+	void CreateMeshGridShader();
+
+	void CreateMeshGridUniformBuffers();
+	void UpdateMeshGridUniformBuffer(UINT uiIdx);
+
+	void CreateMeshGridDescriptorSetLayout();
+	void CreateMeshGridDescriptorPool();
+	void CreateMeshGridDescriptorSets();
+
+	void CreateMeshGridGraphicPipelineLayout();
+	void CreateMeshGridGraphicPipeline();
 
 private:
 	UINT m_uiWindowWidth;
@@ -386,8 +417,6 @@ private:
 	bool m_bEnableSkybox = false;
 	DZW_VulkanWrap::Texture m_SkyboxTexture;
 	DZW_VulkanWrap::Model m_SkyboxModel;
-	VkPipelineLayout m_SkyboxGraphicPipelineLayout;
-	VkPipeline m_SkyboxGraphicPipeline;
 	std::unordered_map<VkShaderStageFlagBits, VkShaderModule> m_mapSkyboxShaderModule;
 	SkyboxUniformBufferObject m_SkyboxUboData;
 	std::vector<VkBuffer> m_vecSkyboxUniformBuffers;
@@ -395,4 +424,27 @@ private:
 	VkDescriptorSetLayout m_SkyboxDescriptorSetLayout;
 	VkDescriptorPool m_SkyboxDescriptorPool;
 	std::vector<VkDescriptorSet> m_vecSkyboxDescriptorSets;
+	VkPipelineLayout m_SkyboxGraphicPipelineLayout;
+	VkPipeline m_SkyboxGraphicPipeline;
+
+	//Mesh Grid
+	bool m_bEnableMeshGrid = true;
+	float m_fMeshGridSize = 500.0f;
+	float m_fMeshGridSplit = 10.f;
+	float m_fMeshGridLineWidth = 2.f;
+	std::vector<Vertex3D> m_vecMeshGridVertices;
+	std::vector<UINT> m_vecMeshGridIndices;
+	std::unordered_map<VkShaderStageFlagBits, VkShaderModule> m_mapMeshGridShaderModule;
+	MeshGridUniformBufferObject m_MeshGridUboData;
+	std::vector<VkBuffer> m_vecMeshGridUniformBuffers;
+	std::vector<VkDeviceMemory> m_vecMeshGridUniformBufferMemories;
+	VkBuffer m_MeshGridVertexBuffer;
+	VkDeviceMemory m_MeshGridVertexBufferMemory;
+	VkBuffer m_MeshGridIndexBuffer;
+	VkDeviceMemory m_MeshGridIndexBufferMemory;
+	VkDescriptorSetLayout m_MeshGridDescriptorSetLayout;
+	VkDescriptorPool m_MeshGridDescriptorPool;
+	std::vector<VkDescriptorSet> m_vecMeshGridDescriptorSets;
+	VkPipelineLayout m_MeshGridGraphicPipelineLayout;
+	VkPipeline m_MeshGridGraphicPipeline;
 };

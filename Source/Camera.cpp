@@ -14,6 +14,11 @@ Camera::Camera(float fFov, float fAspectRatio, float fNearClip, float fFarClip)
 }
 void Camera::Set(float fFov, float fAspectRatio, float fNearClip, float fFarClip)
 {
+	m_fVerticalFOV = fFov;
+	m_fAspectRatio = fAspectRatio;
+	m_fNearClip = fNearClip;
+	m_fFarClip = fFarClip;
+
 	UpdateProjection();
 	UpdateView();
 }

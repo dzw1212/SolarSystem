@@ -18,7 +18,7 @@
 struct Vertex3D
 {
 	glm::vec3 pos = { 0.f, 0.f, 0.f };
-	glm::vec3 color = { 0.f, 0.f, 0.f };
+	glm::vec3 color = { 1.f, 1.f, 1.f };
 	glm::vec2 texCoord = { 0.f, 0.f };
 	glm::vec3 normal = { 0.f, 0.f, 0.f };
 

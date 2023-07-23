@@ -30,7 +30,7 @@
 
 #define INSTANCE_NUM 9
 
-#define ENABLE_GUI true
+static bool ENABLE_GUI = true;
 
 #include "imgui.h"
 #include "UI/UI.h"
@@ -99,37 +99,22 @@ void VulkanRenderer::Init()
 	CreateSwapChainImageViews();
 	CreateSwapChainFrameBuffers();
 
+	CreateCommandPool();
+	CreateCommandBuffer();
+	
+	CreateSyncObjects();
+
+	LoadModel("./Assert/Model/sphere.obj", m_Model);
+	LoadTexture("./Assert/Texture/solarsystem_array_rgba8.ktx", m_Texture);
 	CreateShader();
 	CreateUniformBuffers();
-
-	//CreateTextureImageAndFillData();
-	//CreateTextureImageView();
-
-	//LoadModel("./Assert/Model/teapot.gltf");
-	LoadModel("./Assert/Model/sphere.obj", m_Model);
-	//LoadModel("./Assert/Model/Skybox/cube.gltf");
-	//LoadModel("./Assert/Model/sphere.gltf");
-	//LoadModel("./Assert/Model/triangle.gltf");
-	//LoadModel("./Assert/Model/vulkanscenemodels.gltf");
-	//LoadModel("./Assert/Model/viking_room.obj");
-
-	//m_Texture = LoadTexture("./Assert/Texture/viking_room.png");
-	LoadTexture("./Assert/Texture/solarsystem_array_rgba8.ktx", m_Texture);
-	//LoadTexture("./Assert/Texture/texturearray_rgba.ktx", m_Texture);
-	//m_Texture = LoadTexture("./Assert/Texture/earth.ktx");
-
 	CreateDescriptorSetLayout();
 	CreateDescriptorPool();
 	CreateDescriptorSets();
-
-	CreateCommandPool();
-	CreateCommandBuffer();
-
-	CreateSyncObjects();
-
 	CreateGraphicPipelineLayout();
 	CreateGraphicPipeline();
 
+	//Skybox
 	LoadTexture("./Assert/Texture/Skybox/milkyway_cubemap.ktx", m_SkyboxTexture);
 	LoadModel("./Assert/Model/Skybox/cube.gltf", m_SkyboxModel);
 	CreateSkyboxShader();
@@ -139,6 +124,17 @@ void VulkanRenderer::Init()
 	CreateSkyboxDescriptorSets();
 	CreateSkyboxGraphicPipelineLayout();
 	CreateSkyboxGraphicPipeline();
+
+	//Mesh Grid
+	CreateMeshGridVertexBuffer();
+	CreateMeshGridIndexBuffer();
+	CreateMeshGridShader();
+	CreateMeshGridUniformBuffers();
+	CreateMeshGridDescriptorSetLayout();
+	CreateMeshGridDescriptorPool();
+	CreateMeshGridDescriptorSets();
+	CreateMeshGridGraphicPipelineLayout();
+	CreateMeshGridGraphicPipeline();
 
 	SetupCamera();
 
@@ -184,6 +180,7 @@ void VulkanRenderer::Clean()
 	FreeTexture(m_SkyboxTexture);
 	FreeModel(m_SkyboxModel);
 
+	//Skybox
 	vkDestroyDescriptorPool(m_LogicalDevice, m_SkyboxDescriptorPool, nullptr);
 	vkDestroyDescriptorSetLayout(m_LogicalDevice, m_SkyboxDescriptorSetLayout, nullptr);
 	for (size_t i = 0; i < m_vecSwapChainImages.size(); ++i)
@@ -199,6 +196,32 @@ void VulkanRenderer::Clean()
 
 	vkDestroyPipeline(m_LogicalDevice, m_SkyboxGraphicPipeline, nullptr);
 	vkDestroyPipelineLayout(m_LogicalDevice, m_SkyboxGraphicPipelineLayout, nullptr);
+
+	//Mesh Grid
+	vkDestroyDescriptorPool(m_LogicalDevice, m_MeshGridDescriptorPool, nullptr);
+	vkDestroyDescriptorSetLayout(m_LogicalDevice, m_MeshGridDescriptorSetLayout, nullptr);
+	for (size_t i = 0; i < m_vecSwapChainImages.size(); ++i)
+	{
+		vkFreeMemory(m_LogicalDevice, m_vecMeshGridUniformBufferMemories[i], nullptr);
+		vkDestroyBuffer(m_LogicalDevice, m_vecMeshGridUniformBuffers[i], nullptr);
+	}
+
+	for (const auto& shaderModule : m_mapMeshGridShaderModule)
+	{
+		vkDestroyShaderModule(m_LogicalDevice, shaderModule.second, nullptr);
+	}
+
+	vkDestroyPipeline(m_LogicalDevice, m_MeshGridGraphicPipeline, nullptr);
+	vkDestroyPipelineLayout(m_LogicalDevice, m_MeshGridGraphicPipelineLayout, nullptr);
+
+	vkDestroyBuffer(m_LogicalDevice, m_MeshGridVertexBuffer, nullptr);
+	vkFreeMemory(m_LogicalDevice, m_MeshGridVertexBufferMemory, nullptr);
+
+	vkDestroyBuffer(m_LogicalDevice, m_MeshGridIndexBuffer, nullptr);
+	vkFreeMemory(m_LogicalDevice, m_MeshGridIndexBufferMemory, nullptr);
+
+	//----------------------------------------------------------------------------
+
 
 	for (const auto& shaderModule : m_mapShaderModule)
 	{
@@ -657,6 +680,8 @@ void VulkanRenderer::CreateLogicalDevice()
 	vecQueueCreateInfo.push_back(queueCreateInfo);
 
 	VkPhysicalDeviceFeatures deviceFeatures{};
+	deviceFeatures.fillModeNonSolid = VK_TRUE;
+	deviceFeatures.wideLines = VK_TRUE;
 	//deviceFeatures.samplerAnisotropy = VK_TRUE; //启用各向异性过滤，用于纹理采样
 	//deviceFeatures.sampleRateShading = VK_TRUE;	//启用Sample Rate Shaing，用于MSAA抗锯齿
 
@@ -1880,7 +1905,7 @@ void VulkanRenderer::CreateSyncObjects()
 
 void VulkanRenderer::SetupCamera()
 {
-	m_Camera.Set(45.f, (float)m_SwapChainExtent2D.width / (float)m_SwapChainExtent2D.height, 0.1f, 100.f);
+	m_Camera.Set(45.f, (float)m_SwapChainExtent2D.width / (float)m_SwapChainExtent2D.height, 0.1f, 10000.f);
 	m_Camera.SetViewportSize(static_cast<float>(m_SwapChainExtent2D.width), static_cast<float>(m_SwapChainExtent2D.height));
 	m_Camera.SetWindow(m_pWindow);
 	m_Camera.SetPosition({ 0.f, 0.f, 100.f });
@@ -2081,6 +2106,399 @@ void VulkanRenderer::CreateSkyboxGraphicPipeline()
 	VULKAN_ASSERT(vkCreateGraphicsPipelines(m_LogicalDevice, VK_NULL_HANDLE, 1, &pipelineCreateInfo, nullptr, &m_SkyboxGraphicPipeline), "Create skybox graphic pipeline failed");
 }
 
+void VulkanRenderer::CalcMeshGridVertexData()
+{
+	ASSERT(m_fMeshGridSplit >= 1);
+	m_vecMeshGridVertices.clear();
+	UINT uiMeshGridSplitPointCount = static_cast<UINT>(m_fMeshGridSplit) + 1;
+	m_vecMeshGridVertices.resize(uiMeshGridSplitPointCount * uiMeshGridSplitPointCount);
+	float fSplitLen = 1.f / m_fMeshGridSplit;
+	for (UINT i = 0; i < uiMeshGridSplitPointCount; ++i)
+	{
+		for (UINT j = 0; j < uiMeshGridSplitPointCount; ++j)
+		{
+			UINT uiIdx = i * uiMeshGridSplitPointCount + j;
+			float x = static_cast<float>(j) * fSplitLen - 0.5f;
+			float y = static_cast<float>(i) * fSplitLen - 0.5f;
+			m_vecMeshGridVertices[uiIdx].pos = {x, y, 0.f};
+		}
+	}
+}
+
+void VulkanRenderer::CalcMeshGridIndexData()
+{
+	UINT uiVertexCount = m_vecMeshGridVertices.size();
+	ASSERT(uiVertexCount >= 4);
+	m_vecMeshGridIndices.clear();
+	UINT uiMeshGridSplitLineCount = static_cast<UINT>(m_fMeshGridSplit);
+	UINT uiMeshGridSplitPointCount = static_cast<UINT>(m_fMeshGridSplit) + 1;
+	
+	//横向
+	for (UINT i = 0; i < uiMeshGridSplitPointCount; ++i)
+	{
+		for (UINT j = 0; j < uiMeshGridSplitLineCount; ++j)
+		{
+			UINT uiStart = i * uiMeshGridSplitPointCount + j;
+			m_vecMeshGridIndices.push_back(uiStart);
+			m_vecMeshGridIndices.push_back(uiStart + 1);
+		}
+	}
+
+	//纵向
+	for (UINT i = 0; i < uiMeshGridSplitPointCount; ++i)
+	{
+		for (UINT j = 0; j < uiMeshGridSplitLineCount; ++j)
+		{
+			UINT uiStart = i + j * uiMeshGridSplitPointCount;
+			m_vecMeshGridIndices.push_back(uiStart);
+			m_vecMeshGridIndices.push_back(uiStart + uiMeshGridSplitPointCount);
+		}
+	}
+}
+
+void VulkanRenderer::RecreateMeshGrid()
+{
+	ENABLE_GUI = false;
+	vkQueueWaitIdle(m_GraphicQueue);
+	vkDeviceWaitIdle(m_LogicalDevice);
+
+	vkDestroyBuffer(m_LogicalDevice, m_MeshGridVertexBuffer, nullptr);
+	vkFreeMemory(m_LogicalDevice, m_MeshGridVertexBufferMemory, nullptr);
+
+	vkDestroyBuffer(m_LogicalDevice, m_MeshGridIndexBuffer, nullptr);
+	vkFreeMemory(m_LogicalDevice, m_MeshGridIndexBufferMemory, nullptr);
+
+	CreateMeshGridVertexBuffer();
+	CreateMeshGridIndexBuffer();
+	ENABLE_GUI = true;
+}
+
+void VulkanRenderer::CreateMeshGridVertexBuffer()
+{
+	CalcMeshGridVertexData();
+
+	for (auto& vert : m_vecMeshGridVertices)
+		vert.pos *= (m_fMeshGridSize / 2.f);
+
+	Log::Info(std::format("Mesh Grid Vertex Count : {}", m_vecMeshGridVertices.size()));
+	ASSERT(m_vecMeshGridVertices.size() > 0, "Vertex data empty");
+	VkDeviceSize verticesSize = sizeof(m_vecMeshGridVertices[0]) * m_vecMeshGridVertices.size();
+	CreateBufferAndBindMemory(verticesSize,
+		VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+		VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+		m_MeshGridVertexBuffer, m_MeshGridVertexBufferMemory);
+	TransferBufferDataByStageBuffer(m_vecMeshGridVertices.data(), verticesSize, m_MeshGridVertexBuffer);
+}
+
+void VulkanRenderer::CreateMeshGridIndexBuffer()
+{
+	CalcMeshGridIndexData();
+
+	Log::Info(std::format("Mesh Grid Index Count : {}", m_vecMeshGridIndices.size()));
+	VkDeviceSize indicesSize = sizeof(m_vecMeshGridIndices[0]) * m_vecMeshGridIndices.size();
+	if (indicesSize > 0)
+		CreateBufferAndBindMemory(indicesSize,
+			VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT,
+			VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+			m_MeshGridIndexBuffer, m_MeshGridIndexBufferMemory);
+	TransferBufferDataByStageBuffer(m_vecMeshGridIndices.data(), indicesSize, m_MeshGridIndexBuffer);
+}
+
+void VulkanRenderer::CreateMeshGridShader()
+{
+	std::unordered_map<VkShaderStageFlagBits, std::filesystem::path> mapMeshGridShaderPath = {
+		{ VK_SHADER_STAGE_VERTEX_BIT,	"./Assert/Shader/MeshGrid/vert.spv" },
+		{ VK_SHADER_STAGE_FRAGMENT_BIT,	"./Assert/Shader/MeshGrid/frag.spv" },
+	};
+	ASSERT(mapMeshGridShaderPath.size() > 0, "Detect no shader spv file");
+
+	m_mapMeshGridShaderModule.clear();
+
+	for (const auto& spvPath : mapMeshGridShaderPath)
+	{
+		auto shaderModule = CreateShaderModule(ReadShaderFile(spvPath.second));
+
+		m_mapMeshGridShaderModule[spvPath.first] = shaderModule;
+	}
+}
+
+void VulkanRenderer::CreateMeshGridUniformBuffers()
+{
+	m_vecMeshGridUniformBuffers.resize(m_vecSwapChainImages.size());
+	m_vecMeshGridUniformBufferMemories.resize(m_vecSwapChainImages.size());
+
+	for (size_t i = 0; i < m_vecSwapChainImages.size(); ++i)
+	{
+		CreateBufferAndBindMemory(sizeof(MeshGridUniformBufferObject),
+			VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
+			VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+			m_vecMeshGridUniformBuffers[i],
+			m_vecMeshGridUniformBufferMemories[i]
+		);
+	}
+}
+
+void VulkanRenderer::UpdateMeshGridUniformBuffer(UINT uiIdx)
+{
+	m_MeshGridUboData.model = glm::translate(glm::mat4(1.f), { 0.f, 0.f, 0.f }) * glm::rotate(glm::mat4(1.f), glm::radians(0.f), glm::vec3(1.0, 0.0, 0.0));
+	m_MeshGridUboData.view = m_Camera.GetViewMatrix();
+	m_MeshGridUboData.proj = m_Camera.GetProjMatrix();
+	//OpenGL与Vulkan的差异 - Y坐标是反的
+	m_MeshGridUboData.proj[1][1] *= -1.f;
+
+	void* uniformBufferData;
+	vkMapMemory(m_LogicalDevice, m_vecMeshGridUniformBufferMemories[uiIdx], 0, sizeof(MeshGridUniformBufferObject), 0, &uniformBufferData);
+	memcpy(uniformBufferData, &m_MeshGridUboData, sizeof(MeshGridUniformBufferObject));
+	vkUnmapMemory(m_LogicalDevice, m_vecMeshGridUniformBufferMemories[uiIdx]);
+}
+
+void VulkanRenderer::CreateMeshGridDescriptorSetLayout()
+{
+	//UniformBufferObject Binding
+	VkDescriptorSetLayoutBinding uboLayoutBinding{};
+	uboLayoutBinding.binding = 0; //对应Vertex Shader中的layout binding
+	uboLayoutBinding.descriptorCount = 1;
+	uboLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+	uboLayoutBinding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT; //只需要在vertex stage生效
+	uboLayoutBinding.pImmutableSamplers = nullptr;
+
+	std::vector<VkDescriptorSetLayoutBinding> vecDescriptorLayoutBinding = {
+		uboLayoutBinding,
+	};
+
+	VkDescriptorSetLayoutCreateInfo createInfo{};
+	createInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+	createInfo.bindingCount = static_cast<UINT>(vecDescriptorLayoutBinding.size());
+	createInfo.pBindings = vecDescriptorLayoutBinding.data();
+
+	VULKAN_ASSERT(vkCreateDescriptorSetLayout(m_LogicalDevice, &createInfo, nullptr, &m_MeshGridDescriptorSetLayout), "Create mesh grid descriptor layout failed");
+}
+
+void VulkanRenderer::CreateMeshGridDescriptorPool()
+{
+	//ubo
+	VkDescriptorPoolSize uboPoolSize{};
+	uboPoolSize.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+	uboPoolSize.descriptorCount = static_cast<UINT>(m_vecSwapChainImages.size());
+
+	std::vector<VkDescriptorPoolSize> vecPoolSize = {
+		uboPoolSize,
+	};
+
+	VkDescriptorPoolCreateInfo poolCreateInfo{};
+	poolCreateInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+	poolCreateInfo.poolSizeCount = static_cast<UINT>(vecPoolSize.size());
+	poolCreateInfo.pPoolSizes = vecPoolSize.data();
+	poolCreateInfo.maxSets = static_cast<UINT>(m_vecSwapChainImages.size());
+
+	VULKAN_ASSERT(vkCreateDescriptorPool(m_LogicalDevice, &poolCreateInfo, nullptr, &m_MeshGridDescriptorPool), "Create mesh grid descriptor pool failed");
+}
+
+void VulkanRenderer::CreateMeshGridDescriptorSets()
+{
+	VkDescriptorSetAllocateInfo allocInfo{};
+	allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+	allocInfo.descriptorSetCount = static_cast<UINT>(m_vecSwapChainImages.size());
+	allocInfo.descriptorPool = m_MeshGridDescriptorPool;
+
+	std::vector<VkDescriptorSetLayout> vecDupDescriptorSetLayout(m_vecSwapChainImages.size(), m_MeshGridDescriptorSetLayout);
+	allocInfo.pSetLayouts = vecDupDescriptorSetLayout.data();
+
+	m_vecMeshGridDescriptorSets.resize(m_vecSwapChainImages.size());
+	VULKAN_ASSERT(vkAllocateDescriptorSets(m_LogicalDevice, &allocInfo, m_vecMeshGridDescriptorSets.data()), "Allocate mesh grid desctiprot sets failed");
+
+	for (size_t i = 0; i < m_vecSwapChainImages.size(); ++i)
+	{
+		//ubo
+		VkDescriptorBufferInfo descriptorBufferInfo{};
+		descriptorBufferInfo.buffer = m_vecMeshGridUniformBuffers[i];
+		descriptorBufferInfo.offset = 0;
+		descriptorBufferInfo.range = sizeof(MeshGridUniformBufferObject);
+
+		VkWriteDescriptorSet uboWrite{};
+		uboWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+		uboWrite.dstSet = m_vecMeshGridDescriptorSets[i];
+		uboWrite.dstBinding = 0;
+		uboWrite.dstArrayElement = 0;
+		uboWrite.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+		uboWrite.descriptorCount = 1;
+		uboWrite.pBufferInfo = &descriptorBufferInfo;
+
+		std::vector<VkWriteDescriptorSet> vecDescriptorWrite = {
+			uboWrite,
+		};
+
+		vkUpdateDescriptorSets(m_LogicalDevice, static_cast<UINT>(vecDescriptorWrite.size()), vecDescriptorWrite.data(), 0, nullptr);
+	}
+}
+
+void VulkanRenderer::CreateMeshGridGraphicPipelineLayout()
+{
+	VkPipelineLayoutCreateInfo pipelineLayoutCreateInfo{};
+	pipelineLayoutCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+	pipelineLayoutCreateInfo.setLayoutCount = 1;
+	pipelineLayoutCreateInfo.pSetLayouts = &m_MeshGridDescriptorSetLayout;
+	pipelineLayoutCreateInfo.pushConstantRangeCount = 0;
+	pipelineLayoutCreateInfo.pPushConstantRanges = nullptr;
+
+	VULKAN_ASSERT(vkCreatePipelineLayout(m_LogicalDevice, &pipelineLayoutCreateInfo, nullptr, &m_MeshGridGraphicPipelineLayout), "Create mesh grid pipeline layout failed");
+}
+
+void VulkanRenderer::CreateMeshGridGraphicPipeline()
+{
+	/****************************可编程管线*******************************/
+	VkPipelineShaderStageCreateInfo vertShaderStageCreateInfo{};
+	vertShaderStageCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+	vertShaderStageCreateInfo.stage = VK_SHADER_STAGE_VERTEX_BIT;
+	vertShaderStageCreateInfo.module = m_mapMeshGridShaderModule.at(VK_SHADER_STAGE_VERTEX_BIT); //Bytecode
+	vertShaderStageCreateInfo.pName = "main"; //要invoke的函数
+
+	VkPipelineShaderStageCreateInfo fragShaderStageCreateInfo{};
+	fragShaderStageCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+	fragShaderStageCreateInfo.stage = VK_SHADER_STAGE_FRAGMENT_BIT;
+	fragShaderStageCreateInfo.module = m_mapMeshGridShaderModule.at(VK_SHADER_STAGE_FRAGMENT_BIT); //Bytecode
+	fragShaderStageCreateInfo.pName = "main"; //要invoke的函数
+
+	VkPipelineShaderStageCreateInfo shaderStageCreateInfos[] = {
+		vertShaderStageCreateInfo,
+		fragShaderStageCreateInfo,
+	};
+
+	/*****************************固定管线*******************************/
+
+	//-----------------------Dynamic State--------------------------//
+	//VK_DYNAMIC_STATE_LINE_WIDTH
+
+	//-----------------------Vertex Input State--------------------------//
+	auto bindingDescription = Vertex3D::GetBindingDescription();
+	auto attributeDescriptions = Vertex3D::GetAttributeDescriptions();
+	VkPipelineVertexInputStateCreateInfo vertexInputCreateInfo{};
+	vertexInputCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
+	vertexInputCreateInfo.vertexBindingDescriptionCount = 1;
+	vertexInputCreateInfo.pVertexBindingDescriptions = &bindingDescription;
+	vertexInputCreateInfo.vertexAttributeDescriptionCount = static_cast<UINT>(attributeDescriptions.size());
+	vertexInputCreateInfo.pVertexAttributeDescriptions = attributeDescriptions.data();
+
+	//-----------------------Input Assembly State------------------------//
+	VkPipelineInputAssemblyStateCreateInfo inputAssemblyCreateInfo{};
+	inputAssemblyCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
+	inputAssemblyCreateInfo.topology = VK_PRIMITIVE_TOPOLOGY_LINE_LIST;
+	inputAssemblyCreateInfo.primitiveRestartEnable = VK_FALSE;
+
+
+	//-----------------------Viewport State--------------------------//
+	VkPipelineViewportStateCreateInfo viewportStateCreateInfo{};
+	viewportStateCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
+	viewportStateCreateInfo.viewportCount = 1;
+	viewportStateCreateInfo.scissorCount = 1;
+
+	//设置Viewport，范围为[0,0]到[width,height]
+	VkViewport viewport{};
+	viewport.x = 0.f;
+	viewport.y = 0.f;
+	viewport.width = static_cast<float>(m_SwapChainExtent2D.width);
+	viewport.height = static_cast<float>(m_SwapChainExtent2D.height);
+	viewport.minDepth = 0.f;
+	viewport.maxDepth = 1.f;
+
+	//设置裁剪区域Scissor Rectangle
+	VkRect2D scissor{};
+	scissor.offset = { 0,0 };
+	VkExtent2D ScissorExtent;
+	ScissorExtent.width = m_SwapChainExtent2D.width;
+	ScissorExtent.height = m_SwapChainExtent2D.height;
+	scissor.extent = ScissorExtent;
+
+	viewportStateCreateInfo.pViewports = &viewport;
+	viewportStateCreateInfo.pScissors = &scissor;
+
+	//-----------------------Raserization State--------------------------//
+	VkPipelineRasterizationStateCreateInfo rasterizationStateCreateInfo{};
+	rasterizationStateCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
+	rasterizationStateCreateInfo.depthClampEnable = VK_FALSE;	//开启后，超过远近平面的部分会被截断在远近平面上，而不是丢弃
+	rasterizationStateCreateInfo.rasterizerDiscardEnable = VK_FALSE;	//开启后，禁止所有图元经过光栅化器
+	rasterizationStateCreateInfo.polygonMode = VK_POLYGON_MODE_LINE;	//图元模式，可以是FILL、LINE、POINT
+	rasterizationStateCreateInfo.lineWidth = m_fMeshGridLineWidth;	//指定光栅化后的线段宽度
+	rasterizationStateCreateInfo.cullMode = VK_CULL_MODE_NONE;
+	rasterizationStateCreateInfo.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE; //顶点序，可以是顺时针cw或逆时针ccw
+	rasterizationStateCreateInfo.depthBiasEnable = VK_FALSE; //深度偏移，一般用于Shaodw Map中避免阴影痤疮
+	rasterizationStateCreateInfo.depthBiasConstantFactor = 0.f;
+	rasterizationStateCreateInfo.depthBiasClamp = 0.f;
+	rasterizationStateCreateInfo.depthBiasSlopeFactor = 0.f;
+
+	//-----------------------Multisample State--------------------------//
+	VkPipelineMultisampleStateCreateInfo multisamplingStateCreateInfo{};
+	multisamplingStateCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
+	multisamplingStateCreateInfo.sampleShadingEnable = VK_FALSE;
+	multisamplingStateCreateInfo.minSampleShading = 0.8f;
+	multisamplingStateCreateInfo.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
+	multisamplingStateCreateInfo.minSampleShading = 1.f;
+	multisamplingStateCreateInfo.pSampleMask = nullptr;
+	multisamplingStateCreateInfo.alphaToCoverageEnable = VK_FALSE;
+	multisamplingStateCreateInfo.alphaToOneEnable = VK_FALSE;
+
+	//-----------------------Depth Stencil State--------------------------//
+	VkPipelineDepthStencilStateCreateInfo depthStencilStateCreateInfo{};
+	depthStencilStateCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
+	depthStencilStateCreateInfo.depthTestEnable = VK_TRUE; //作为背景，始终在最远处，不进行深度检测
+	depthStencilStateCreateInfo.depthWriteEnable = VK_TRUE;
+	depthStencilStateCreateInfo.depthCompareOp = VK_COMPARE_OP_LESS_OR_EQUAL;
+	depthStencilStateCreateInfo.depthBoundsTestEnable = VK_FALSE;
+	depthStencilStateCreateInfo.minDepthBounds = 0.f;
+	depthStencilStateCreateInfo.maxDepthBounds = 1.f;
+	depthStencilStateCreateInfo.stencilTestEnable = VK_FALSE;
+	depthStencilStateCreateInfo.front = {};
+	depthStencilStateCreateInfo.back = {};
+
+	//-----------------------Color Blend State--------------------------//
+	VkPipelineColorBlendStateCreateInfo colorBlendStateCreateInfo{};
+	colorBlendStateCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
+	colorBlendStateCreateInfo.logicOpEnable = VK_FALSE;
+	colorBlendStateCreateInfo.logicOp = VK_LOGIC_OP_COPY;
+	colorBlendStateCreateInfo.attachmentCount = 1;
+
+	VkPipelineColorBlendAttachmentState colorBlendAttachment{};
+	colorBlendAttachment.colorWriteMask =
+		VK_COLOR_COMPONENT_R_BIT
+		| VK_COLOR_COMPONENT_G_BIT
+		| VK_COLOR_COMPONENT_B_BIT
+		| VK_COLOR_COMPONENT_A_BIT;
+	colorBlendAttachment.blendEnable = VK_FALSE;
+	colorBlendAttachment.srcColorBlendFactor = VK_BLEND_FACTOR_ONE;
+	colorBlendAttachment.dstColorBlendFactor = VK_BLEND_FACTOR_ZERO;
+	colorBlendAttachment.colorBlendOp = VK_BLEND_OP_ADD;
+	colorBlendAttachment.srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
+	colorBlendAttachment.dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO;
+	colorBlendAttachment.alphaBlendOp = VK_BLEND_OP_ADD;
+
+	colorBlendStateCreateInfo.pAttachments = &colorBlendAttachment;
+	colorBlendStateCreateInfo.blendConstants[0] = 0.f;
+	colorBlendStateCreateInfo.blendConstants[1] = 0.f;
+	colorBlendStateCreateInfo.blendConstants[2] = 0.f;
+	colorBlendStateCreateInfo.blendConstants[3] = 0.f;
+
+	/***********************************************************************/
+	VkGraphicsPipelineCreateInfo pipelineCreateInfo{};
+	pipelineCreateInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
+	pipelineCreateInfo.stageCount = static_cast<UINT>(m_mapMeshGridShaderModule.size());
+	pipelineCreateInfo.pStages = shaderStageCreateInfos;
+	pipelineCreateInfo.pDynamicState = VK_NULL_HANDLE;
+	pipelineCreateInfo.pVertexInputState = &vertexInputCreateInfo;
+	pipelineCreateInfo.pInputAssemblyState = &inputAssemblyCreateInfo;
+	pipelineCreateInfo.pViewportState = &viewportStateCreateInfo;
+	pipelineCreateInfo.pRasterizationState = &rasterizationStateCreateInfo;
+	pipelineCreateInfo.pMultisampleState = &multisamplingStateCreateInfo;
+	pipelineCreateInfo.pDepthStencilState = &depthStencilStateCreateInfo;
+	pipelineCreateInfo.pColorBlendState = &colorBlendStateCreateInfo;
+	pipelineCreateInfo.layout = m_MeshGridGraphicPipelineLayout;
+	pipelineCreateInfo.renderPass = m_RenderPass;
+	pipelineCreateInfo.subpass = 0;
+	pipelineCreateInfo.basePipelineHandle = VK_NULL_HANDLE;
+	pipelineCreateInfo.basePipelineIndex = -1;
+
+	VULKAN_ASSERT(vkCreateGraphicsPipelines(m_LogicalDevice, VK_NULL_HANDLE, 1, &pipelineCreateInfo, nullptr, &m_MeshGridGraphicPipeline), "Create mesh grid graphic pipeline failed");
+}
+
 void VulkanRenderer::CreateSkyboxUniformBuffers()
 {
 	m_vecSkyboxUniformBuffers.resize(m_vecSwapChainImages.size());
@@ -2264,6 +2682,25 @@ void VulkanRenderer::RecordCommandBuffer(VkCommandBuffer& commandBuffer, UINT ui
 		vkCmdDrawIndexed(commandBuffer, static_cast<UINT>(m_SkyboxModel.m_vecIndices.size()), 1, 0, 0, 0);
 	}
 
+	if (m_bEnableMeshGrid)
+	{
+		vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m_MeshGridGraphicPipeline);
+		VkBuffer meshGridVertexBuffers[] = {
+			m_MeshGridVertexBuffer,
+		};
+		VkDeviceSize meshGridOffsets[]{ 0 };
+		vkCmdBindVertexBuffers(commandBuffer, 0, 1, meshGridVertexBuffers, meshGridOffsets);
+		vkCmdBindIndexBuffer(commandBuffer, m_MeshGridIndexBuffer, 0, VK_INDEX_TYPE_UINT32);
+		vkCmdBindDescriptorSets(commandBuffer,
+			VK_PIPELINE_BIND_POINT_GRAPHICS,
+			m_MeshGridGraphicPipelineLayout,
+			0, 1,
+			&m_vecMeshGridDescriptorSets[uiIdx],
+			0, NULL);
+
+		vkCmdDrawIndexed(commandBuffer, static_cast<UINT>(m_vecMeshGridIndices.size()), 1, 0, 0, 0);
+		//vkCmdDraw(commandBuffer, static_cast<UINT>(m_vecMeshGridVertices.size()), 1, 0, 0);
+	}
 
 	if (m_bViewportAndScissorIsDynamic)
 	{
@@ -2400,6 +2837,9 @@ void VulkanRenderer::Render()
 
 	if (m_bEnableSkybox)
 		UpdateSkyboxUniformBuffer(m_uiCurFrameIdx);
+
+	if (m_bEnableMeshGrid)
+		UpdateMeshGridUniformBuffer(m_uiCurFrameIdx);
 
 	RecordCommandBuffer(m_vecCommandBuffers[m_uiCurFrameIdx], uiImageIdx);
 
