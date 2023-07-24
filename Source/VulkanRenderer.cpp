@@ -291,6 +291,19 @@ void VulkanRenderer::FrameBufferResizeCallBack(GLFWwindow* pWindow, int nWidth, 
 		vulkanRenderer->m_bFrameBufferResized = true;
 }
 
+void VulkanRenderer::MouseButtonCallBack(GLFWwindow* pWindow, int nButton, int nAction, int nMods)
+{
+	auto vulkanRenderer = reinterpret_cast<VulkanRenderer*>(glfwGetWindowUserPointer(pWindow));
+	if (vulkanRenderer)
+	{
+		if (nButton == GLFW_MOUSE_BUTTON_LEFT && nAction == GLFW_PRESS)
+		{
+			//vulkanRenderer->m_fMeshGridSplit++;
+			//vulkanRenderer->RecreateMeshGrid();
+		}
+	}
+}
+
 void VulkanRenderer::InitWindow()
 {
 	glfwInit();
@@ -304,6 +317,8 @@ void VulkanRenderer::InitWindow()
 
 	glfwSetWindowUserPointer(m_pWindow, this);
 	glfwSetFramebufferSizeCallback(m_pWindow, FrameBufferResizeCallBack);
+
+	glfwSetMouseButtonCallback(m_pWindow, MouseButtonCallBack);
 }
 
 void VulkanRenderer::QueryGLFWExtensions()
@@ -963,7 +978,7 @@ void VulkanRenderer::CreateRenderPass()
 	attachmentDescriptions[0].stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
 	attachmentDescriptions[0].stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
 	attachmentDescriptions[0].initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-	attachmentDescriptions[0].finalLayout = ENABLE_GUI ? VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL : VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+	attachmentDescriptions[0].finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
 
 	VkAttachmentReference colorAttachmentRef{};
 	colorAttachmentRef.attachment = 0;
@@ -1067,38 +1082,6 @@ void VulkanRenderer::EndSingleTimeCommand(VkCommandBuffer commandBuffer)
 	vkFreeCommandBuffers(m_LogicalDevice, m_TransferCommandPool, 1, &commandBuffer);
 }
 
-std::vector<char> VulkanRenderer::ReadShaderFile(const std::filesystem::path& filepath)
-{
-	ASSERT(std::filesystem::exists(filepath), std::format("Shader file path {} not exist", filepath.string()));
-	//光标置于文件末尾，方便统计长度
-	std::ifstream file(filepath, std::ios::ate | std::ios::binary);
-	ASSERT(file.is_open(), std::format("Open shader file {} failed", filepath.string()));
-
-	//tellg获取当前文件读写位置
-	size_t fileSize = static_cast<size_t>(file.tellg());
-	std::vector<char> vecBuffer(fileSize);
-
-	//指针回到文件开头
-	file.seekg(0);
-	file.read(vecBuffer.data(), fileSize);
-
-	file.close();
-	return vecBuffer;
-}
-
-VkShaderModule VulkanRenderer::CreateShaderModule(const std::vector<char>& vecBytecode)
-{
-	VkShaderModuleCreateInfo createInfo{};
-	createInfo.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
-	createInfo.codeSize = vecBytecode.size();
-	createInfo.pCode = reinterpret_cast<const UINT*>(vecBytecode.data());
-
-	VkShaderModule shaderModule;
-	VULKAN_ASSERT(vkCreateShaderModule(m_LogicalDevice, &createInfo, nullptr, &shaderModule), "Create shader module failed");
-
-	return shaderModule;
-}
-
 void VulkanRenderer::CreateShader()
 {
 	m_mapShaderModule.clear();
@@ -1107,7 +1090,7 @@ void VulkanRenderer::CreateShader()
 
 	for (const auto& spvPath : m_mapShaderPath)
 	{
-		auto shaderModule = CreateShaderModule(ReadShaderFile(spvPath.second));
+		auto shaderModule = DZW_VulkanUtils::CreateShaderModule(m_LogicalDevice, DZW_VulkanUtils::ReadShaderFile(spvPath.second));
 
 		m_mapShaderModule[spvPath.first] = shaderModule;
 	}
@@ -1934,7 +1917,7 @@ void VulkanRenderer::CreateSkyboxShader()
 
 	for (const auto& spvPath : mapSkyboxShaderPath)
 	{
-		auto shaderModule = CreateShaderModule(ReadShaderFile(spvPath.second));
+		auto shaderModule = DZW_VulkanUtils::CreateShaderModule(m_LogicalDevice, DZW_VulkanUtils::ReadShaderFile(spvPath.second));
 
 		m_mapSkyboxShaderModule[spvPath.first] = shaderModule;
 	}
@@ -2158,8 +2141,6 @@ void VulkanRenderer::CalcMeshGridIndexData()
 
 void VulkanRenderer::RecreateMeshGrid()
 {
-	ENABLE_GUI = false;
-	vkQueueWaitIdle(m_GraphicQueue);
 	vkDeviceWaitIdle(m_LogicalDevice);
 
 	vkDestroyBuffer(m_LogicalDevice, m_MeshGridVertexBuffer, nullptr);
@@ -2170,7 +2151,6 @@ void VulkanRenderer::RecreateMeshGrid()
 
 	CreateMeshGridVertexBuffer();
 	CreateMeshGridIndexBuffer();
-	ENABLE_GUI = true;
 }
 
 void VulkanRenderer::CreateMeshGridVertexBuffer()
@@ -2183,6 +2163,7 @@ void VulkanRenderer::CreateMeshGridVertexBuffer()
 	Log::Info(std::format("Mesh Grid Vertex Count : {}", m_vecMeshGridVertices.size()));
 	ASSERT(m_vecMeshGridVertices.size() > 0, "Vertex data empty");
 	VkDeviceSize verticesSize = sizeof(m_vecMeshGridVertices[0]) * m_vecMeshGridVertices.size();
+
 	CreateBufferAndBindMemory(verticesSize,
 		VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
 		VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
@@ -2216,7 +2197,7 @@ void VulkanRenderer::CreateMeshGridShader()
 
 	for (const auto& spvPath : mapMeshGridShaderPath)
 	{
-		auto shaderModule = CreateShaderModule(ReadShaderFile(spvPath.second));
+		auto shaderModule = DZW_VulkanUtils::CreateShaderModule(m_LogicalDevice, DZW_VulkanUtils::ReadShaderFile(spvPath.second));
 
 		m_mapMeshGridShaderModule[spvPath.first] = shaderModule;
 	}
@@ -2684,6 +2665,17 @@ void VulkanRenderer::RecordCommandBuffer(VkCommandBuffer& commandBuffer, UINT ui
 
 	if (m_bEnableMeshGrid)
 	{
+		if (m_fLastMeshGridSplit != m_fMeshGridSplit)
+		{
+			RecreateMeshGrid();
+			m_fLastMeshGridSplit = m_fMeshGridSplit;
+		}
+		if (m_fLastMeshGridSize != m_fMeshGridSize)
+		{
+			RecreateMeshGrid();
+			m_fLastMeshGridSize = m_fMeshGridSize;
+		}
+
 		vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m_MeshGridGraphicPipeline);
 		VkBuffer meshGridVertexBuffers[] = {
 			m_MeshGridVertexBuffer,
@@ -2745,10 +2737,10 @@ void VulkanRenderer::RecordCommandBuffer(VkCommandBuffer& commandBuffer, UINT ui
 		vkCmdDrawIndexed(commandBuffer, static_cast<UINT>(m_Model.m_vecIndices.size()), 1, 0, 0, 0);
 	}
 
-	vkCmdEndRenderPass(commandBuffer);
-
 	if (ENABLE_GUI)
-		g_UI.RecordRenderPass(uiIdx);
+		g_UI.Render(uiIdx);
+
+	vkCmdEndRenderPass(commandBuffer);
 
 	VULKAN_ASSERT(vkEndCommandBuffer(commandBuffer), "End command buffer failed");
 }
@@ -2937,9 +2929,6 @@ void VulkanRenderer::CleanWindowResizeResource()
 	//清理SwapChain
 	vkDestroySwapchainKHR(m_LogicalDevice, m_SwapChain, nullptr);
 	vkDestroyPipeline(m_LogicalDevice, m_GraphicPipeline, nullptr);
-
-	if (ENABLE_GUI)
-		g_UI.CleanResizeResource();
 }
 
 void VulkanRenderer::RecreateWindowResizeResource()
@@ -2966,7 +2955,7 @@ void VulkanRenderer::RecreateWindowResizeResource()
 	CreateGraphicPipeline();
 
 	if (ENABLE_GUI)
-		g_UI.RecreateResizeResource();
+		g_UI.Resize();
 }
 
 void VulkanRenderer::WindowResize()

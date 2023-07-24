@@ -88,6 +88,7 @@ public:
 
 private:
 	static void FrameBufferResizeCallBack(GLFWwindow* pWindow, int nWidth, int nHeight);
+	static void MouseButtonCallBack(GLFWwindow* pWindow, int nButton, int nAction, int nMods);
 	void InitWindow();
 
 	void QueryGLFWExtensions();
@@ -154,8 +155,6 @@ private:
 	VkCommandBuffer BeginSingleTimeCommand();
 	void EndSingleTimeCommand(VkCommandBuffer commandBuffer);
 
-	std::vector<char> ReadShaderFile(const std::filesystem::path& filepath);
-	VkShaderModule CreateShaderModule(const std::vector<char>& vecBytecode);
 	void CreateShader();
 
 	struct UniformBufferObject
@@ -170,8 +169,6 @@ private:
 		glm::mat4* model;
 		float* fTextureIndex;
 	};
-
-	UINT FindSuitableMemoryTypeIndex(UINT typeFilter, VkMemoryPropertyFlags properties);
 
 	void AllocateBufferMemory(VkMemoryPropertyFlags propertyFlags, VkBuffer& buffer, VkDeviceMemory& bufferMemory);
 	void CreateBufferAndBindMemory(VkDeviceSize deviceSize, VkBufferUsageFlags usageFlags,
@@ -235,6 +232,7 @@ public:
 public:
 	GLFWwindow* GetWindow() { return m_pWindow; }
 	VkInstance& GetInstance() { return m_Instance; }
+	VkRenderPass& GetRenderPass() { return m_RenderPass; }
 	VkPhysicalDevice& GetPhysicalDevice() { return m_PhysicalDevice; }
 	VkDevice& GetLogicalDevice() { return m_LogicalDevice; }
 	UINT GetGraphicQueueIdx() { return m_mapPhysicalDeviceInfo.at(m_PhysicalDevice).graphicFamilyIdx.value(); }
@@ -256,6 +254,8 @@ public:
 	VkPipeline& GetPipeline() { return m_GraphicPipeline; }
 
 	PhysicalDeviceInfo& GetPhysicalDeviceInfo() { return m_mapPhysicalDeviceInfo.at(m_PhysicalDevice); }
+
+	UINT FindSuitableMemoryTypeIndex(UINT typeFilter, VkMemoryPropertyFlags properties);
 
 
 	void SetTextureLod(float fLod) { m_UboData.lod = fLod; }
@@ -432,14 +432,16 @@ private:
 	float m_fMeshGridSize = 500.0f;
 	float m_fMeshGridSplit = 10.f;
 	float m_fMeshGridLineWidth = 2.f;
+	float m_fLastMeshGridSplit = m_fMeshGridSplit;
+	float m_fLastMeshGridSize = m_fMeshGridSize;
 	std::vector<Vertex3D> m_vecMeshGridVertices;
 	std::vector<UINT> m_vecMeshGridIndices;
 	std::unordered_map<VkShaderStageFlagBits, VkShaderModule> m_mapMeshGridShaderModule;
 	MeshGridUniformBufferObject m_MeshGridUboData;
 	std::vector<VkBuffer> m_vecMeshGridUniformBuffers;
 	std::vector<VkDeviceMemory> m_vecMeshGridUniformBufferMemories;
-	VkBuffer m_MeshGridVertexBuffer;
-	VkDeviceMemory m_MeshGridVertexBufferMemory;
+	VkBuffer m_MeshGridVertexBuffer = VK_NULL_HANDLE;
+	VkDeviceMemory m_MeshGridVertexBufferMemory = VK_NULL_HANDLE;
 	VkBuffer m_MeshGridIndexBuffer;
 	VkDeviceMemory m_MeshGridIndexBufferMemory;
 	VkDescriptorSetLayout m_MeshGridDescriptorSetLayout;
