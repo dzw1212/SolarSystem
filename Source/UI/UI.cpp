@@ -146,6 +146,7 @@ void UI::Draw()
     ImGui::Checkbox("Enable", m_pRenderer->GetMeshGridEnable());
     ImGui::DragFloat("Size", m_pRenderer->GetMeshGridSize(), 1.f, 100.f, 1000.f, "%.1f");
     ImGui::DragFloat("Split", m_pRenderer->GetMeshGridSplit(), 1.f, 1.f, 100.f, "%.1f");
+    ImGui::DragFloat("Line Width", m_pRenderer->GetMeshGridLineWidth(), 1.f, 1.f, 20.f, "%.1f");
 
     ImGui::End();
 }
@@ -154,7 +155,7 @@ void UI::Render(UINT uiIdx)
 {
     Draw();
 
-    VkCommandBuffer command_buffer = m_pRenderer->GetCommandBuffer(uiIdx);
+    VkCommandBuffer& command_buffer = m_pRenderer->GetCommandBuffer(uiIdx);
     
     ImGui::Render();
     ImDrawData* draw_data = ImGui::GetDrawData();
@@ -279,7 +280,10 @@ void UI::Render(UINT uiIdx)
 
 void UI::Resize()
 {
-    
+    ImGuiIO& io = ImGui::GetIO();
+
+    auto& extent = m_pRenderer->GetSwapChainExtent2D();
+    io.DisplaySize = ImVec2(static_cast<float>(extent.width), static_cast<float>(extent.height));
 }
 
 void UI::Clean()

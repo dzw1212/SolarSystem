@@ -266,6 +266,7 @@ public:
 	bool* GetMeshGridEnable() { return &m_bEnableMeshGrid; }
 	float* GetMeshGridSize() { return &m_fMeshGridSize; }
 	float* GetMeshGridSplit() { return &m_fMeshGridSplit; }
+	float* GetMeshGridLineWidth() { return &m_fMeshGridLineWidth; }
 
 	float* GetInstanceSpan() { return &m_fInstanceSpan; }
 
@@ -299,7 +300,8 @@ public:
 	void CalcMeshGridVertexData();
 	void CalcMeshGridIndexData();
 
-	void RecreateMeshGrid();
+	void RecreateMeshGridVertexBuffer();
+	void RecreateMeshGridIndexBuffer();
 
 	void CreateMeshGridVertexBuffer();
 	void CreateMeshGridIndexBuffer();

@@ -102,8 +102,8 @@ void VulkanRenderer::Init()
 	
 	CreateSyncObjects();
 
-	LoadModel("./Assert/Model/sphere.gltf", m_Model);
-	LoadTexture("./Assert/Texture/texturearray_rgba.ktx", m_Texture);
+	LoadModel("./Assert/Model/sphere.obj", m_Model);
+	LoadTexture("./Assert/Texture/solarsystem_array_rgba8.ktx", m_Texture);
 	CreateShader();
 	CreateUniformBuffers();
 	CreateDescriptorSetLayout();
@@ -113,7 +113,7 @@ void VulkanRenderer::Init()
 	CreateGraphicPipeline();
 
 	//Skybox
-	LoadTexture("./Assert/Texture/Skybox/cubemap_yokohama_rgba.ktx", m_SkyboxTexture);
+	LoadTexture("./Assert/Texture/Skybox/milkyway_cubemap.ktx", m_SkyboxTexture);
 	LoadModel("./Assert/Model/Skybox/cube.gltf", m_SkyboxModel);
 	CreateSkyboxShader();
 	CreateSkyboxUniformBuffers();
@@ -147,12 +147,6 @@ void VulkanRenderer::Loop()
 		static std::chrono::time_point<std::chrono::high_resolution_clock> lastTimestamp = std::chrono::high_resolution_clock::now();
 		
 		glfwPollEvents();
-
-		if (m_bNeedResize)
-		{
-			WindowResize();
-			m_bNeedResize = false;
-		}
 
 		Render();
 
@@ -2122,17 +2116,23 @@ void VulkanRenderer::CalcMeshGridIndexData()
 	}
 }
 
-void VulkanRenderer::RecreateMeshGrid()
+void VulkanRenderer::RecreateMeshGridVertexBuffer()
 {
 	vkDeviceWaitIdle(m_LogicalDevice);
 
 	vkDestroyBuffer(m_LogicalDevice, m_MeshGridVertexBuffer, nullptr);
 	vkFreeMemory(m_LogicalDevice, m_MeshGridVertexBufferMemory, nullptr);
 
+	CreateMeshGridVertexBuffer();
+}
+
+void VulkanRenderer::RecreateMeshGridIndexBuffer()
+{
+	vkDeviceWaitIdle(m_LogicalDevice);
+
 	vkDestroyBuffer(m_LogicalDevice, m_MeshGridIndexBuffer, nullptr);
 	vkFreeMemory(m_LogicalDevice, m_MeshGridIndexBufferMemory, nullptr);
 
-	CreateMeshGridVertexBuffer();
 	CreateMeshGridIndexBuffer();
 }
 
@@ -2654,12 +2654,13 @@ void VulkanRenderer::RecordCommandBuffer(VkCommandBuffer& commandBuffer, UINT ui
 	{
 		if (m_fLastMeshGridSplit != m_fMeshGridSplit)
 		{
-			RecreateMeshGrid();
+			RecreateMeshGridVertexBuffer();
+			RecreateMeshGridIndexBuffer();
 			m_fLastMeshGridSplit = m_fMeshGridSplit;
 		}
 		if (m_fLastMeshGridSize != m_fMeshGridSize)
 		{
-			RecreateMeshGrid();
+			RecreateMeshGridVertexBuffer();
 			m_fLastMeshGridSize = m_fMeshGridSize;
 		}
 		vkCmdSetLineWidth(commandBuffer, m_fMeshGridLineWidth);
@@ -2757,6 +2758,12 @@ void VulkanRenderer::Render()
 	//等待fence的值变为signaled
 	vkWaitForFences(m_LogicalDevice, 1, &m_vecInFlightFences[m_uiCurFrameIdx], VK_TRUE, UINT64_MAX);
 
+	if (m_bNeedResize)
+	{
+		WindowResize();
+		m_bNeedResize = false;
+	}
+
 	if (ENABLE_GUI)
 		g_UI.StartNewFrame();
 
@@ -2795,7 +2802,7 @@ void VulkanRenderer::Render()
 	if (m_bEnableMeshGrid)
 		UpdateMeshGridUniformBuffer(m_uiCurFrameIdx);
 
-	RecordCommandBuffer(m_vecCommandBuffers[m_uiCurFrameIdx], uiImageIdx);
+	RecordCommandBuffer(m_vecCommandBuffers[m_uiCurFrameIdx], m_uiCurFrameIdx);
 
 	//auto uiCommandBuffer = g_UI.FillCommandBuffer(m_uiCurFrameIdx);
 
@@ -2884,42 +2891,46 @@ void VulkanRenderer::WindowResize()
 	//3. 引用了SwapChain Image的：FrameBuffer
 	//4. 引用了FrameBuffer的：CommandBuffer(RenderPassBeginInfo)
 	//5. 引用了ViewportScissors的：Pipeline（如果viewport/scissor非dynamic）
+	//6. 如果颜色格式或色彩空间发生了变化：RenderPass
+	//7. 如果SwapChain中的ImageCount发生了变化：相关的各种同步对象，fence，semaphore
 
 	vkDeviceWaitIdle(m_LogicalDevice);
 
-	//Clean
+	//swap cain
+	CreateSwapChain(); //在创建中销毁旧的SwapChain
+
+	//depth
 	vkDestroyImageView(m_LogicalDevice, m_DepthImageView, nullptr);
 	vkDestroyImage(m_LogicalDevice, m_DepthImage, nullptr);
 	vkFreeMemory(m_LogicalDevice, m_DepthImageMemory, nullptr);
+	CreateDepthImage();
+	CreateDepthImageView();
 
-	for (const auto& frameBuffer : m_vecSwapChainFrameBuffers)
-	{
-		vkDestroyFramebuffer(m_LogicalDevice, frameBuffer, nullptr);
-	}
-
+	//image views
 	for (const auto& imageView : m_vecSwapChainImageViews)
 	{
 		vkDestroyImageView(m_LogicalDevice, imageView, nullptr);
 	}
+	CreateSwapChainImages();
+	CreateSwapChainImageViews();
 
-	vkDestroyRenderPass(m_LogicalDevice, m_RenderPass, nullptr);
+	//frame buffers
+	for (const auto& frameBuffer : m_vecSwapChainFrameBuffers)
+	{
+		vkDestroyFramebuffer(m_LogicalDevice, frameBuffer, nullptr);
+	}
+	CreateSwapChainFrameBuffers();
 
+	//UI
+	if (ENABLE_GUI)
+	{
+		g_UI.Resize();
+	}
+	//command buffers
 	vkFreeCommandBuffers(m_LogicalDevice, m_CommandPool,
 		static_cast<UINT>(m_vecCommandBuffers.size()),
 		m_vecCommandBuffers.data());
-
-	//Recreate
-	CreateSwapChain(); //在创建中销毁旧的SwapChain
-
-	CreateDepthImage();
-	CreateDepthImageView();
-
-	CreateSwapChainImages();
-	CreateSwapChainImageViews();
 	
-	CreateRenderPass();
-
-	CreateSwapChainFrameBuffers();
 	CreateCommandBuffers();
 }
 
