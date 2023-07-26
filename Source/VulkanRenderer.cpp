@@ -62,8 +62,6 @@ VulkanRenderer::VulkanRenderer()
 
 	m_ModelPath = "./Assert/Model/viking_room.obj";
 
-	m_bViewportAndScissorIsDynamic = false;
-
 	m_uiCurFrameIdx = 0;
 
 	m_uiFPS = 0;
@@ -100,12 +98,12 @@ void VulkanRenderer::Init()
 	CreateSwapChainFrameBuffers();
 
 	CreateCommandPool();
-	CreateCommandBuffer();
+	CreateCommandBuffers();
 	
 	CreateSyncObjects();
 
-	LoadModel("./Assert/Model/sphere.obj", m_Model);
-	LoadTexture("./Assert/Texture/solarsystem_array_rgba8.ktx", m_Texture);
+	LoadModel("./Assert/Model/sphere.gltf", m_Model);
+	LoadTexture("./Assert/Texture/texturearray_rgba.ktx", m_Texture);
 	CreateShader();
 	CreateUniformBuffers();
 	CreateDescriptorSetLayout();
@@ -115,7 +113,7 @@ void VulkanRenderer::Init()
 	CreateGraphicPipeline();
 
 	//Skybox
-	LoadTexture("./Assert/Texture/Skybox/milkyway_cubemap.ktx", m_SkyboxTexture);
+	LoadTexture("./Assert/Texture/Skybox/cubemap_yokohama_rgba.ktx", m_SkyboxTexture);
 	LoadModel("./Assert/Model/Skybox/cube.gltf", m_SkyboxModel);
 	CreateSkyboxShader();
 	CreateSkyboxUniformBuffers();
@@ -146,9 +144,15 @@ void VulkanRenderer::Loop()
 {
 	while (!glfwWindowShouldClose(m_pWindow))
 	{
+		static std::chrono::time_point<std::chrono::high_resolution_clock> lastTimestamp = std::chrono::high_resolution_clock::now();
+		
 		glfwPollEvents();
 
-		static std::chrono::time_point<std::chrono::high_resolution_clock> lastTimestamp = std::chrono::high_resolution_clock::now();
+		if (m_bNeedResize)
+		{
+			WindowResize();
+			m_bNeedResize = false;
+		}
 
 		Render();
 
@@ -460,8 +464,8 @@ void VulkanRenderer::FillDebugMessengerCreateInfo(VkDebugUtilsMessengerCreateInf
 	messengerCreateInfo.sType =
 		VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT;
 	messengerCreateInfo.messageSeverity =
-		VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT |
-		VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT/* |
+		VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT/* |
+		VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT |
 		VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT |
 		VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT*/;
 	messengerCreateInfo.messageType =
@@ -799,6 +803,9 @@ UINT VulkanRenderer::ChooseSwapChainImageCount(const VkSurfaceCapabilitiesKHR& c
 
 void VulkanRenderer::CreateSwapChain()
 {
+	VkSwapchainKHR oldSwapChain = m_SwapChain;
+	m_SwapChain = VK_NULL_HANDLE;
+
 	const auto& physicalDeviceInfo = m_mapPhysicalDeviceInfo.at(m_PhysicalDevice);
 
 	m_SwapChainSurfaceFormat = ChooseSwapChainSurfaceFormat(physicalDeviceInfo.swapChainSupportInfo.vecSurfaceFormats);
@@ -837,9 +844,17 @@ void VulkanRenderer::CreateSwapChain()
 	createInfo.clipped = VK_TRUE;
 
 	//oldSwapChain用于window resize时
-	createInfo.oldSwapchain = VK_NULL_HANDLE;
+	//Vulkan会尝试重用旧交换链中的一些可能还有效的资源，以此提高性能和效率
+	//还可以保证在新的交换链创建完成之前旧的交换链仍可使用，避免重建期间出现闪烁
+	createInfo.oldSwapchain = oldSwapChain;
 
 	VULKAN_ASSERT(vkCreateSwapchainKHR(m_LogicalDevice, &createInfo, nullptr, &m_SwapChain), "Create swap chain failed");
+
+	if (oldSwapChain != VK_NULL_HANDLE)
+	{
+		vkDestroySwapchainKHR(m_LogicalDevice, oldSwapChain, nullptr);
+		oldSwapChain = VK_NULL_HANDLE;
+	}
 }
 
 VkImageView VulkanRenderer::CreateImageView(VkImage image, VkFormat format, VkImageAspectFlags aspectFlags, UINT uiMipLevelCount, UINT uiLayerCount, UINT uiFaceCount)
@@ -1666,7 +1681,7 @@ void VulkanRenderer::CreateCommandPool()
 	VULKAN_ASSERT(vkCreateCommandPool(m_LogicalDevice, &commandPoolCreateInfo, nullptr, &m_CommandPool), "Create command pool failed");
 }
 
-void VulkanRenderer::CreateCommandBuffer()
+void VulkanRenderer::CreateCommandBuffers()
 {
 	m_vecCommandBuffers.resize(m_vecSwapChainImages.size());
 
@@ -1722,15 +1737,14 @@ void VulkanRenderer::CreateGraphicPipeline()
 	//一般会将Viewport和Scissor设为dynamic，以方便随时修改
 	VkPipelineDynamicStateCreateInfo dynamicStateCreateInfo{};
 	dynamicStateCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO;
-	if (m_bViewportAndScissorIsDynamic)
-	{
-		std::vector<VkDynamicState> vecDynamicStates = {
-			VK_DYNAMIC_STATE_VIEWPORT,
-			VK_DYNAMIC_STATE_SCISSOR,
-		};
-		dynamicStateCreateInfo.dynamicStateCount = static_cast<UINT>(vecDynamicStates.size());
-		dynamicStateCreateInfo.pDynamicStates = vecDynamicStates.data();
-	}
+
+	std::vector<VkDynamicState> vecDynamicStates = {
+		VK_DYNAMIC_STATE_VIEWPORT,
+		VK_DYNAMIC_STATE_SCISSOR,
+	};
+	dynamicStateCreateInfo.dynamicStateCount = static_cast<UINT>(vecDynamicStates.size());
+	dynamicStateCreateInfo.pDynamicStates = vecDynamicStates.data();
+
 
 	//-----------------------Vertex Input State--------------------------//
 	auto bindingDescription = Vertex3D::GetBindingDescription();
@@ -1754,29 +1768,6 @@ void VulkanRenderer::CreateGraphicPipeline()
 	viewportStateCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
 	viewportStateCreateInfo.viewportCount = 1;
 	viewportStateCreateInfo.scissorCount = 1;
-	//如果没有把Viewport和Scissor设为dynamic state，则需要在此处指定（使用这种设置方法，设置的Viewport是不可变的）
-	if (!m_bViewportAndScissorIsDynamic)
-	{
-		//设置Viewport，范围为[0,0]到[width,height]
-		VkViewport viewport{};
-		viewport.x = 0.f;
-		viewport.y = 0.f;
-		viewport.width = static_cast<float>(m_SwapChainExtent2D.width);
-		viewport.height = static_cast<float>(m_SwapChainExtent2D.height);
-		viewport.minDepth = 0.f;
-		viewport.maxDepth = 1.f;
-
-		//设置裁剪区域Scissor Rectangle
-		VkRect2D scissor{};
-		scissor.offset = { 0,0 };
-		VkExtent2D ScissorExtent;
-		ScissorExtent.width = m_SwapChainExtent2D.width;
-		ScissorExtent.height = m_SwapChainExtent2D.height;
-		scissor.extent = ScissorExtent;
-
-		viewportStateCreateInfo.pViewports = &viewport;
-		viewportStateCreateInfo.pScissors = &scissor;
-	}
 
 	//-----------------------Raserization State--------------------------//
 	VkPipelineRasterizationStateCreateInfo rasterizationStateCreateInfo{};
@@ -1862,7 +1853,11 @@ void VulkanRenderer::CreateGraphicPipeline()
 	pipelineCreateInfo.basePipelineHandle = VK_NULL_HANDLE;
 	pipelineCreateInfo.basePipelineIndex = -1;
 
-	VULKAN_ASSERT(vkCreateGraphicsPipelines(m_LogicalDevice, VK_NULL_HANDLE, 1, &pipelineCreateInfo, nullptr, &m_GraphicPipeline), "Create graphic pipeline failed");
+	//创建管线时，如果提供了VkPipelineCache对象，Vulkan会尝试从中重用数据
+	//如果没有可重用的数据，新的数据会被添加到缓存中
+	VkPipelineCache pipelineCache = VK_NULL_HANDLE;
+
+	VULKAN_ASSERT(vkCreateGraphicsPipelines(m_LogicalDevice, pipelineCache, 1, &pipelineCreateInfo, nullptr, &m_GraphicPipeline), "Create graphic pipeline failed");
 }
 
 void VulkanRenderer::CreateSyncObjects()
@@ -1958,6 +1953,14 @@ void VulkanRenderer::CreateSkyboxGraphicPipeline()
 	/*****************************固定管线*******************************/
 
 	//-----------------------Dynamic State--------------------------//
+	VkPipelineDynamicStateCreateInfo dynamicStateCreateInfo{};
+	dynamicStateCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO;
+	std::vector<VkDynamicState> vecDynamicStates = {
+		VK_DYNAMIC_STATE_VIEWPORT,
+		VK_DYNAMIC_STATE_SCISSOR,
+	};
+	dynamicStateCreateInfo.dynamicStateCount = static_cast<UINT>(vecDynamicStates.size());
+	dynamicStateCreateInfo.pDynamicStates = vecDynamicStates.data();
 
 	//-----------------------Vertex Input State--------------------------//
 	auto bindingDescription = Vertex3D::GetBindingDescription();
@@ -1981,26 +1984,6 @@ void VulkanRenderer::CreateSkyboxGraphicPipeline()
 	viewportStateCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
 	viewportStateCreateInfo.viewportCount = 1;
 	viewportStateCreateInfo.scissorCount = 1;
-
-	//设置Viewport，范围为[0,0]到[width,height]
-	VkViewport viewport{};
-	viewport.x = 0.f;
-	viewport.y = 0.f;
-	viewport.width = static_cast<float>(m_SwapChainExtent2D.width);
-	viewport.height = static_cast<float>(m_SwapChainExtent2D.height);
-	viewport.minDepth = 0.f;
-	viewport.maxDepth = 1.f;
-
-	//设置裁剪区域Scissor Rectangle
-	VkRect2D scissor{};
-	scissor.offset = { 0,0 };
-	VkExtent2D ScissorExtent;
-	ScissorExtent.width = m_SwapChainExtent2D.width;
-	ScissorExtent.height = m_SwapChainExtent2D.height;
-	scissor.extent = ScissorExtent;
-
-	viewportStateCreateInfo.pViewports = &viewport;
-	viewportStateCreateInfo.pScissors = &scissor;
 
 	//-----------------------Raserization State--------------------------//
 	VkPipelineRasterizationStateCreateInfo rasterizationStateCreateInfo{};
@@ -2072,7 +2055,7 @@ void VulkanRenderer::CreateSkyboxGraphicPipeline()
 	pipelineCreateInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
 	pipelineCreateInfo.stageCount = static_cast<UINT>(m_mapSkyboxShaderModule.size());
 	pipelineCreateInfo.pStages = shaderStageCreateInfos;
-	pipelineCreateInfo.pDynamicState = VK_NULL_HANDLE;
+	pipelineCreateInfo.pDynamicState = &dynamicStateCreateInfo;
 	pipelineCreateInfo.pVertexInputState = &vertexInputCreateInfo;
 	pipelineCreateInfo.pInputAssemblyState = &inputAssemblyCreateInfo;
 	pipelineCreateInfo.pViewportState = &viewportStateCreateInfo;
@@ -2221,7 +2204,7 @@ void VulkanRenderer::CreateMeshGridUniformBuffers()
 
 void VulkanRenderer::UpdateMeshGridUniformBuffer(UINT uiIdx)
 {
-	m_MeshGridUboData.model = glm::translate(glm::mat4(1.f), { 0.f, 0.f, 0.f }) * glm::rotate(glm::mat4(1.f), glm::radians(0.f), glm::vec3(1.0, 0.0, 0.0));
+	m_MeshGridUboData.model = glm::translate(glm::mat4(1.f), {0.f, 0.f, 0.f});
 	m_MeshGridUboData.view = m_Camera.GetViewMatrix();
 	m_MeshGridUboData.proj = m_Camera.GetProjMatrix();
 	//OpenGL与Vulkan的差异 - Y坐标是反的
@@ -2348,7 +2331,15 @@ void VulkanRenderer::CreateMeshGridGraphicPipeline()
 	/*****************************固定管线*******************************/
 
 	//-----------------------Dynamic State--------------------------//
-	//VK_DYNAMIC_STATE_LINE_WIDTH
+	VkPipelineDynamicStateCreateInfo dynamicStateCreateInfo{};
+	dynamicStateCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO;
+	std::vector<VkDynamicState> vecDynamicStates = {
+		VK_DYNAMIC_STATE_VIEWPORT,
+		VK_DYNAMIC_STATE_SCISSOR,
+		VK_DYNAMIC_STATE_LINE_WIDTH,
+	};
+	dynamicStateCreateInfo.dynamicStateCount = static_cast<UINT>(vecDynamicStates.size());
+	dynamicStateCreateInfo.pDynamicStates = vecDynamicStates.data();
 
 	//-----------------------Vertex Input State--------------------------//
 	auto bindingDescription = Vertex3D::GetBindingDescription();
@@ -2372,26 +2363,6 @@ void VulkanRenderer::CreateMeshGridGraphicPipeline()
 	viewportStateCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
 	viewportStateCreateInfo.viewportCount = 1;
 	viewportStateCreateInfo.scissorCount = 1;
-
-	//设置Viewport，范围为[0,0]到[width,height]
-	VkViewport viewport{};
-	viewport.x = 0.f;
-	viewport.y = 0.f;
-	viewport.width = static_cast<float>(m_SwapChainExtent2D.width);
-	viewport.height = static_cast<float>(m_SwapChainExtent2D.height);
-	viewport.minDepth = 0.f;
-	viewport.maxDepth = 1.f;
-
-	//设置裁剪区域Scissor Rectangle
-	VkRect2D scissor{};
-	scissor.offset = { 0,0 };
-	VkExtent2D ScissorExtent;
-	ScissorExtent.width = m_SwapChainExtent2D.width;
-	ScissorExtent.height = m_SwapChainExtent2D.height;
-	scissor.extent = ScissorExtent;
-
-	viewportStateCreateInfo.pViewports = &viewport;
-	viewportStateCreateInfo.pScissors = &scissor;
 
 	//-----------------------Raserization State--------------------------//
 	VkPipelineRasterizationStateCreateInfo rasterizationStateCreateInfo{};
@@ -2463,7 +2434,7 @@ void VulkanRenderer::CreateMeshGridGraphicPipeline()
 	pipelineCreateInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
 	pipelineCreateInfo.stageCount = static_cast<UINT>(m_mapMeshGridShaderModule.size());
 	pipelineCreateInfo.pStages = shaderStageCreateInfos;
-	pipelineCreateInfo.pDynamicState = VK_NULL_HANDLE;
+	pipelineCreateInfo.pDynamicState = &dynamicStateCreateInfo;
 	pipelineCreateInfo.pVertexInputState = &vertexInputCreateInfo;
 	pipelineCreateInfo.pInputAssemblyState = &inputAssemblyCreateInfo;
 	pipelineCreateInfo.pViewportState = &viewportStateCreateInfo;
@@ -2644,6 +2615,22 @@ void VulkanRenderer::RecordCommandBuffer(VkCommandBuffer& commandBuffer, UINT ui
 
 	vkCmdBeginRenderPass(commandBuffer, &renderPassBeginInfo, VK_SUBPASS_CONTENTS_INLINE);
 
+	//vkCmdSetViewport，vkCmdSetScissor类似函数应用于commandBuffer后续所有的绘制命令
+	//应该在最开始绑定渲染管线之前设置
+	VkViewport viewport{};
+	viewport.x = 0.f;
+	viewport.y = 0.f;
+	viewport.width = static_cast<float>(m_SwapChainExtent2D.width);
+	viewport.height = static_cast<float>(m_SwapChainExtent2D.height);
+	viewport.minDepth = 0.f;
+	viewport.maxDepth = 1.f;
+	vkCmdSetViewport(commandBuffer, 0, 1, &viewport);
+
+	VkRect2D scissor{};
+	scissor.offset = { 0, 0 };
+	scissor.extent = m_SwapChainExtent2D;
+	vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
+	
 	if (m_bEnableSkybox)
 	{
 		vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m_SkyboxGraphicPipeline);
@@ -2675,7 +2662,7 @@ void VulkanRenderer::RecordCommandBuffer(VkCommandBuffer& commandBuffer, UINT ui
 			RecreateMeshGrid();
 			m_fLastMeshGridSize = m_fMeshGridSize;
 		}
-
+		vkCmdSetLineWidth(commandBuffer, m_fMeshGridLineWidth);
 		vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m_MeshGridGraphicPipeline);
 		VkBuffer meshGridVertexBuffers[] = {
 			m_MeshGridVertexBuffer,
@@ -2691,24 +2678,7 @@ void VulkanRenderer::RecordCommandBuffer(VkCommandBuffer& commandBuffer, UINT ui
 			0, NULL);
 
 		vkCmdDrawIndexed(commandBuffer, static_cast<UINT>(m_vecMeshGridIndices.size()), 1, 0, 0, 0);
-		//vkCmdDraw(commandBuffer, static_cast<UINT>(m_vecMeshGridVertices.size()), 1, 0, 0);
-	}
-
-	if (m_bViewportAndScissorIsDynamic)
-	{
-		VkViewport viewport{};
-		viewport.x = 0.f;
-		viewport.y = 0.f;
-		viewport.width = static_cast<float>(m_SwapChainExtent2D.width);
-		viewport.height = static_cast<float>(m_SwapChainExtent2D.height);
-		viewport.minDepth = 0.f;
-		viewport.maxDepth = 1.f;
-		vkCmdSetViewport(commandBuffer, 0, 1, &viewport);
-
-		VkRect2D scissor{};
-		scissor.offset = { 0, 0 };
-		scissor.extent = m_SwapChainExtent2D;
-		vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
+		vkCmdSetLineWidth(commandBuffer, 1.f);
 	}
 
 	vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m_GraphicPipeline);
@@ -2780,20 +2750,12 @@ void VulkanRenderer::UpdateUniformBuffer(UINT uiIdx)
 }
 
 void VulkanRenderer::Render()
-{
-	static bool bNeedResize = false;
-	
+{	
 	if (ENABLE_GUI && !ImGui::IsWindowHovered(ImGuiHoveredFlags_AnyWindow) && !ImGui::IsAnyItemActive())
 		m_Camera.Tick();
 
 	//等待fence的值变为signaled
 	vkWaitForFences(m_LogicalDevice, 1, &m_vecInFlightFences[m_uiCurFrameIdx], VK_TRUE, UINT64_MAX);
-
-	if (bNeedResize)
-	{
-		WindowResize();
-		bNeedResize = false;
-	}
 
 	if (ENABLE_GUI)
 		g_UI.StartNewFrame();
@@ -2807,7 +2769,7 @@ void VulkanRenderer::Render()
 		{
 			//SwapChain与WindowSurface不兼容，无法继续渲染
 			//一般发生在window尺寸改变时
-			bNeedResize = true;
+			m_bNeedResize = true;
 			return;
 		}
 		else if (res == VK_SUBOPTIMAL_KHR)
@@ -2888,7 +2850,7 @@ void VulkanRenderer::Render()
 	{
 		if (res == VK_ERROR_OUT_OF_DATE_KHR || res == VK_SUBOPTIMAL_KHR || m_bFrameBufferResized)
 		{
-			bNeedResize = true;
+			m_bNeedResize = true;
 			m_bFrameBufferResized = false;
 		}
 		else
@@ -2900,62 +2862,6 @@ void VulkanRenderer::Render()
 	m_uiFrameCounter++;
 
 	m_uiCurFrameIdx = (m_uiCurFrameIdx + 1) % static_cast<UINT>(m_vecSwapChainImages.size());
-}
-
-void VulkanRenderer::CleanWindowResizeResource()
-{
-	vkDestroyImageView(m_LogicalDevice, m_DepthImageView, nullptr);
-	vkDestroyImage(m_LogicalDevice, m_DepthImage, nullptr);
-	vkFreeMemory(m_LogicalDevice, m_DepthImageMemory, nullptr);
-
-	for (const auto& frameBuffer : m_vecSwapChainFrameBuffers)
-	{
-		vkDestroyFramebuffer(m_LogicalDevice, frameBuffer, nullptr);
-	}
-
-	for (const auto& imageView : m_vecSwapChainImageViews)
-	{
-		vkDestroyImageView(m_LogicalDevice, imageView, nullptr);
-		printf("Destroy Old ImageView:%p\n", imageView);
-	}
-	
-	for (auto& image : m_vecSwapChainImages)
-	{
-		printf("Destroy Old Image:%p\n", image);
-	}
-
-	vkFreeCommandBuffers(m_LogicalDevice, m_CommandPool, m_vecCommandBuffers.size(), m_vecCommandBuffers.data());
-
-	//清理SwapChain
-	vkDestroySwapchainKHR(m_LogicalDevice, m_SwapChain, nullptr);
-	vkDestroyPipeline(m_LogicalDevice, m_GraphicPipeline, nullptr);
-}
-
-void VulkanRenderer::RecreateWindowResizeResource()
-{
-	CreateSwapChain();
-
-	CreateDepthImage();
-	CreateDepthImageView();
-
-	CreateSwapChainImages();
-	for (auto& image : m_vecSwapChainImages)
-	{
-		printf("Create New Image:%p\n", image);
-	}
-	CreateSwapChainImageViews();
-	for (auto& imageView : m_vecSwapChainImageViews)
-	{
-		printf("Create New ImageView:%p\n", imageView);
-	}
-	CreateSwapChainFrameBuffers();
-
-	CreateCommandBuffer();
-
-	CreateGraphicPipeline();
-
-	if (ENABLE_GUI)
-		g_UI.Resize();
 }
 
 void VulkanRenderer::WindowResize()
@@ -2970,21 +2876,51 @@ void VulkanRenderer::WindowResize()
 		glfwWaitEvents();
 	}
 
-	m_Camera.SetViewportSize(nWidth, nHeight);
+	m_Camera.SetViewportSize(static_cast<float>(nWidth), static_cast<float>(nHeight));
 
 	//需要重建的资源：
-	//1. 和窗口大小相关的：Depth(Image, Memory, ImageView)，SwapChain Image，Viewport/Stencil
+	//1. 和窗口大小相关的：Depth(Image, Memory, ImageView)，SwapChain Image，Viewport/Scissors
 	//2. 引用了DepthImageView的：FrameBuffer
 	//3. 引用了SwapChain Image的：FrameBuffer
 	//4. 引用了FrameBuffer的：CommandBuffer(RenderPassBeginInfo)
-	//5. 引用了ViewportStencil的：Pipeline
-
-	//等待资源结束占用
-	vkDeviceWaitIdle(m_LogicalDevice);
-	CleanWindowResizeResource();
+	//5. 引用了ViewportScissors的：Pipeline（如果viewport/scissor非dynamic）
 
 	vkDeviceWaitIdle(m_LogicalDevice);
-	RecreateWindowResizeResource();
+
+	//Clean
+	vkDestroyImageView(m_LogicalDevice, m_DepthImageView, nullptr);
+	vkDestroyImage(m_LogicalDevice, m_DepthImage, nullptr);
+	vkFreeMemory(m_LogicalDevice, m_DepthImageMemory, nullptr);
+
+	for (const auto& frameBuffer : m_vecSwapChainFrameBuffers)
+	{
+		vkDestroyFramebuffer(m_LogicalDevice, frameBuffer, nullptr);
+	}
+
+	for (const auto& imageView : m_vecSwapChainImageViews)
+	{
+		vkDestroyImageView(m_LogicalDevice, imageView, nullptr);
+	}
+
+	vkDestroyRenderPass(m_LogicalDevice, m_RenderPass, nullptr);
+
+	vkFreeCommandBuffers(m_LogicalDevice, m_CommandPool,
+		static_cast<UINT>(m_vecCommandBuffers.size()),
+		m_vecCommandBuffers.data());
+
+	//Recreate
+	CreateSwapChain(); //在创建中销毁旧的SwapChain
+
+	CreateDepthImage();
+	CreateDepthImageView();
+
+	CreateSwapChainImages();
+	CreateSwapChainImageViews();
+	
+	CreateRenderPass();
+
+	CreateSwapChainFrameBuffers();
+	CreateCommandBuffers();
 }
 
 void VulkanRenderer::LoadTexture(const std::filesystem::path& filepath, DZW_VulkanWrap::Texture& texture)

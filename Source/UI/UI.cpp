@@ -279,10 +279,30 @@ void UI::Render(UINT uiIdx)
 
 void UI::Resize()
 {
+    
 }
 
 void UI::Clean()
 {
+    vkDestroyDescriptorPool(m_pRenderer->GetLogicalDevice(), m_UIDescriptorPool, nullptr);
+    vkDestroyDescriptorSetLayout(m_pRenderer->GetLogicalDevice(), m_UIDescriptorSetLayout, nullptr);
+
+    vkDestroyPipelineLayout(m_pRenderer->GetLogicalDevice(), m_UIPipelineLayout, nullptr);
+    vkDestroyPipeline(m_pRenderer->GetLogicalDevice(), m_UIPipeline, nullptr);
+
+    vkDestroyShaderModule(m_pRenderer->GetLogicalDevice(), m_UIVertexShaderModule, nullptr);
+    vkDestroyShaderModule(m_pRenderer->GetLogicalDevice(), m_UIVertexSRGBShaderModule, nullptr);
+    vkDestroyShaderModule(m_pRenderer->GetLogicalDevice(), m_UIFragmentShaderModule, nullptr);
+    
+    vkDestroyBuffer(m_pRenderer->GetLogicalDevice(), m_UIVertexBuffer, nullptr);
+    vkFreeMemory(m_pRenderer->GetLogicalDevice(), m_UIVertexBufferMemory, nullptr);
+    vkDestroyBuffer(m_pRenderer->GetLogicalDevice(), m_UIIndexBuffer, nullptr);
+    vkFreeMemory(m_pRenderer->GetLogicalDevice(), m_UIIndexBufferMemory, nullptr);
+
+    vkDestroySampler(m_pRenderer->GetLogicalDevice(), m_UIFontSampler, nullptr);
+    vkDestroyImage(m_pRenderer->GetLogicalDevice(), m_UIFontImage, nullptr);
+    vkDestroyImageView(m_pRenderer->GetLogicalDevice(), m_UIFontImageView, nullptr);
+    vkFreeMemory(m_pRenderer->GetLogicalDevice(), m_UIFontImageMemory, nullptr);
 
     ImGui_ImplGlfw_Shutdown();
     ImGui::DestroyContext();

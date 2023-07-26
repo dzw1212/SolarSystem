@@ -194,7 +194,7 @@ private:
 	void TransferBufferDataByStageBuffer(void* pData, VkDeviceSize imageSize, VkBuffer& buffer);
 
 	void CreateCommandPool();
-	void CreateCommandBuffer();
+	void CreateCommandBuffers();
 
 	void CreateGraphicPipelineLayout();
 	void CreateGraphicPipeline();
@@ -205,10 +205,6 @@ private:
 	void RecordCommandBuffer(VkCommandBuffer& commandBuffer, UINT uiIdx);
 	void UpdateUniformBuffer(UINT uiIdx);
 	void Render();
-
-	void CleanWindowResizeResource();
-	void RecreateWindowResizeResource();
-
 
 	void WindowResize();
 
@@ -352,7 +348,7 @@ private:
 	VkQueue m_GraphicQueue;
 	VkQueue m_PresentQueue;
 
-	VkSwapchainKHR m_SwapChain;
+	VkSwapchainKHR m_SwapChain = VK_NULL_HANDLE;
 	VkSurfaceFormatKHR m_SwapChainSurfaceFormat;
 	VkFormat m_SwapChainFormat;
 	VkPresentModeKHR m_SwapChainPresentMode;
@@ -393,8 +389,6 @@ private:
 	VkCommandPool m_CommandPool;
 	std::vector<VkCommandBuffer> m_vecCommandBuffers;
 
-	bool m_bViewportAndScissorIsDynamic;
-
 	VkPipelineLayout m_GraphicPipelineLayout;
 	VkPipeline m_GraphicPipeline;
 
@@ -406,6 +400,8 @@ private:
 
 	float m_fInstanceSpan = 50.f;
 
+	bool m_bNeedResize = false;
+
 	//Dynamic Uniform
 	std::vector<VkBuffer> m_vecDynamicUniformBuffers;
 	std::vector<VkDeviceMemory> m_vecDynamicUniformBufferMemories;
@@ -414,7 +410,7 @@ private:
 	size_t m_DynamicUboBufferSize;
 
 	//Skybox
-	bool m_bEnableSkybox = false;
+	bool m_bEnableSkybox = true;
 	DZW_VulkanWrap::Texture m_SkyboxTexture;
 	DZW_VulkanWrap::Model m_SkyboxModel;
 	std::unordered_map<VkShaderStageFlagBits, VkShaderModule> m_mapSkyboxShaderModule;
