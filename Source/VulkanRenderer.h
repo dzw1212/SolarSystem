@@ -262,6 +262,7 @@ public:
 	glm::vec3 GetCameraPosition() { return m_Camera.GetPosition(); }
 
 	bool* GetSkyboxEnable() { return &m_bEnableSkybox; }
+	float* GetSkyboxRotateSpeed() { return &m_fSkyboxRotateSpeed; }
 
 	bool* GetMeshGridEnable() { return &m_bEnableMeshGrid; }
 	float* GetMeshGridSize() { return &m_fMeshGridSize; }
@@ -386,8 +387,6 @@ private:
 	VkDescriptorPool m_DescriptorPool;
 	std::vector<VkDescriptorSet> m_vecDescriptorSets;
 
-	std::filesystem::path m_ModelPath;
-
 	VkCommandPool m_CommandPool;
 	std::vector<VkCommandBuffer> m_vecCommandBuffers;
 
@@ -413,6 +412,7 @@ private:
 
 	//Skybox
 	bool m_bEnableSkybox = true;
+	float m_fSkyboxRotateSpeed = 1.f;
 	DZW_VulkanWrap::Texture m_SkyboxTexture;
 	DZW_VulkanWrap::Model m_SkyboxModel;
 	std::unordered_map<VkShaderStageFlagBits, VkShaderModule> m_mapSkyboxShaderModule;
@@ -447,4 +447,6 @@ private:
 	std::vector<VkDescriptorSet> m_vecMeshGridDescriptorSets;
 	VkPipelineLayout m_MeshGridGraphicPipelineLayout;
 	VkPipeline m_MeshGridGraphicPipeline;
+
+	//ellipse
 };

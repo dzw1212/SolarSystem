@@ -67,6 +67,12 @@ struct Vertex3D
 	}
 };
 
+struct Circle
+{
+	glm::vec3 m_Center = {0.f, 0.f, 0.f};
+	float m_fRadius = 1.f;
+};
+
 namespace DZW_VulkanWrap
 {
 	struct Texture

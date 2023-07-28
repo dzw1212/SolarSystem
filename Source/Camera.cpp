@@ -91,7 +91,6 @@ void Camera::UpdateProjection()
 {
 	ASSERT(m_fViewportHeight != 0.f, "Viewport Height cant be 0!");
 	m_fAspectRatio = m_fViewportWidth / m_fViewportHeight;
-	Log::Error(std::format("width = {}, height = {}, aspect = {}", m_fViewportWidth, m_fViewportHeight, m_fAspectRatio));
 	m_ProjMatrix = glm::perspective(glm::radians(m_fVerticalFOV), m_fAspectRatio, m_fNearClip, m_fFarClip);
 }
 

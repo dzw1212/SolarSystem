@@ -140,9 +140,11 @@ void UI::Draw()
 
     ImGui::DragFloat("Instance Span", m_pRenderer->GetInstanceSpan(), 1.f, 0.f, 100.f, "%.1f");
 
-    ImGui::Checkbox("Skybox", m_pRenderer->GetSkyboxEnable());
+    ImGui::CollapsingHeader("Skybox", ImGuiTreeNodeFlags_CollapsingHeader);
+    ImGui::Checkbox("Enable", m_pRenderer->GetSkyboxEnable());
+    ImGui::DragFloat("Rotate Speed", m_pRenderer->GetSkyboxRotateSpeed(), 0.01f, 1.f, 10.f, "%.1f");
 
-    ImGui::CollapsingHeader("Mesh Grid");
+    ImGui::CollapsingHeader("Mesh Grid", ImGuiTreeNodeFlags_CollapsingHeader);
     ImGui::Checkbox("Enable", m_pRenderer->GetMeshGridEnable());
     ImGui::DragFloat("Size", m_pRenderer->GetMeshGridSize(), 1.f, 100.f, 1000.f, "%.1f");
     ImGui::DragFloat("Split", m_pRenderer->GetMeshGridSplit(), 1.f, 1.f, 100.f, "%.1f");

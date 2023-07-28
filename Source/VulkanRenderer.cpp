@@ -44,8 +44,8 @@ VulkanRenderer::VulkanRenderer()
 	m_bEnableValidationLayer = true;
 #endif
 
-	m_uiWindowWidth = 1920;
-	m_uiWindowHeight = 1080;
+	m_uiWindowWidth = 2560;
+	m_uiWindowHeight = 1440;
 	m_strWindowTitle = "Vulkan Renderer";
 
 	m_bFrameBufferResized = false;
@@ -54,13 +54,6 @@ VulkanRenderer::VulkanRenderer()
 		{ VK_SHADER_STAGE_VERTEX_BIT,	"./Assert/Shader/vert.spv" },
 		{ VK_SHADER_STAGE_FRAGMENT_BIT,	"./Assert/Shader/frag.spv" },
 	};
-
-	//m_TexturePath = "./Assert/Texture/Earth/8081_earthmap4k.jpg";
-	//m_TexturePath = "./Assert/Texture/Earth2/8k_earth_daymap.jpg";
-	//m_TexturePath = "./Assert/Texture/Earth2/8k_earth_clouds.jpg";
-	//m_TexturePath = "./Assert/Texture/metalplate01_rgba.ktx";
-
-	m_ModelPath = "./Assert/Model/viking_room.obj";
 
 	m_uiCurFrameIdx = 0;
 
@@ -2143,7 +2136,6 @@ void VulkanRenderer::CreateMeshGridVertexBuffer()
 	for (auto& vert : m_vecMeshGridVertices)
 		vert.pos *= (m_fMeshGridSize / 2.f);
 
-	Log::Info(std::format("Mesh Grid Vertex Count : {}", m_vecMeshGridVertices.size()));
 	ASSERT(m_vecMeshGridVertices.size() > 0, "Vertex data empty");
 	VkDeviceSize verticesSize = sizeof(m_vecMeshGridVertices[0]) * m_vecMeshGridVertices.size();
 
@@ -2158,7 +2150,6 @@ void VulkanRenderer::CreateMeshGridIndexBuffer()
 {
 	CalcMeshGridIndexData();
 
-	Log::Info(std::format("Mesh Grid Index Count : {}", m_vecMeshGridIndices.size()));
 	VkDeviceSize indicesSize = sizeof(m_vecMeshGridIndices[0]) * m_vecMeshGridIndices.size();
 	if (indicesSize > 0)
 		CreateBufferAndBindMemory(indicesSize,
@@ -2204,7 +2195,7 @@ void VulkanRenderer::CreateMeshGridUniformBuffers()
 
 void VulkanRenderer::UpdateMeshGridUniformBuffer(UINT uiIdx)
 {
-	m_MeshGridUboData.model = glm::translate(glm::mat4(1.f), {0.f, 0.f, 0.f});
+	m_MeshGridUboData.model = glm::rotate(glm::mat4(1.f), glm::radians(90.f), { 1.f, 0.f, 0.f });
 	m_MeshGridUboData.view = m_Camera.GetViewMatrix();
 	m_MeshGridUboData.proj = m_Camera.GetProjMatrix();
 	//OpenGL与Vulkan的差异 - Y坐标是反的
@@ -2469,7 +2460,14 @@ void VulkanRenderer::CreateSkyboxUniformBuffers()
 
 void VulkanRenderer::UpdateSkyboxUniformBuffer(UINT uiIdx)
 {
-	m_SkyboxUboData.modelView = m_Camera.GetViewMatrix();
+	static auto startTime = std::chrono::high_resolution_clock::now();
+	auto currentTime = std::chrono::high_resolution_clock::now();
+
+	float time = std::chrono::duration<float, std::chrono::seconds::period>(currentTime - startTime).count();
+
+	auto rotateComponent = glm::rotate(glm::mat4(1.f), glm::radians(m_fSkyboxRotateSpeed * time), { 0.f, 1.f, 0.f });
+
+	m_SkyboxUboData.modelView = m_Camera.GetViewMatrix() * rotateComponent;
 	m_SkyboxUboData.modelView[3] = glm::vec4(0.0f, 0.0f, 0.0f, 1.0f); //移除平移分量
 	m_SkyboxUboData.proj = m_Camera.GetProjMatrix();
 	//OpenGL与Vulkan的差异 - Y坐标是反的
@@ -3284,7 +3282,6 @@ void VulkanRenderer::LoadModel(const std::filesystem::path& filepath, DZW_Vulkan
 	else
 		ASSERT(false, "Unsupport model type");
 
-	Log::Info(std::format("Vertex count : {}", model.m_vecVertices.size()));
 	ASSERT(model.m_vecVertices.size() > 0, "Vertex data empty");
 	VkDeviceSize verticesSize = sizeof(model.m_vecVertices[0]) * model.m_vecVertices.size();
 	CreateBufferAndBindMemory(verticesSize,
@@ -3294,7 +3291,6 @@ void VulkanRenderer::LoadModel(const std::filesystem::path& filepath, DZW_Vulkan
 	TransferBufferDataByStageBuffer(model.m_vecVertices.data(), verticesSize, model.m_VertexBuffer);
 
 
-	Log::Info(std::format("Index count : {}", model.m_vecIndices.size()));
 	VkDeviceSize indicesSize = sizeof(model.m_vecIndices[0]) * model.m_vecIndices.size();
 	if (indicesSize > 0)
 	CreateBufferAndBindMemory(indicesSize,
