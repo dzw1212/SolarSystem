@@ -67,11 +67,95 @@ struct Vertex3D
 	}
 };
 
-struct Circle
+namespace DZW_MaterialWrap
 {
-	glm::vec3 m_Center = {0.f, 0.f, 0.f};
-	float m_fRadius = 1.f;
+	struct BlinnPhongMaterial
+	{
+		glm::vec4 ambientCoefficient = glm::vec4(1.f);
+		glm::vec4 diffuseCoefficient = glm::vec4(1.f);
+		glm::vec4 specularCoefficient = glm::vec4(1.f);
+		float fShininess = 1.f;
+	};
+
+	struct PBRMaterial
+	{
+
+	};
 };
+
+namespace DZW_LightWrap
+{
+	struct BlinnPhongPointLight
+	{
+		glm::vec3 position = glm::vec3(0.f);
+		float fIntensify = 1.f;
+
+		glm::vec4 ambient = glm::vec4(1.f);
+		glm::vec4 diffuse = glm::vec4(1.f);
+		glm::vec4 specular = glm::vec4(1.f);
+
+		//attenuation
+		//1 / (const + linear * d + quad * d^2)
+		float fConstantAttenuation = 1.f;
+		float fLinearAttenuation = 0.f;
+		float fQuadraticAttenuation = 0.f;
+
+		float GetIntensify(float fDistance)
+		{
+			float fAttenuation = 1 / (fConstantAttenuation +
+				fLinearAttenuation * fDistance +
+				fQuadraticAttenuation * fDistance * fDistance);
+
+			return std::clamp(fIntensify * fAttenuation, 0.f, 1.f);
+		}
+
+		glm::vec4 GetAmbient(float fDistance) { return ambient * GetIntensify(fDistance); }
+		glm::vec4 GetDiffuse(float fDistance) { return diffuse * GetIntensify(fDistance); }
+		glm::vec4 GetSpecular(float fDistance) { return specular * GetIntensify(fDistance); }
+	};
+
+	struct PBRPointLight
+	{
+
+	};
+}
+
+namespace DZW_MathWrap
+{
+	struct Circle
+	{
+		glm::vec3 m_Center = { 0.f, 0.f, 0.f };
+		float m_fRadius = 1.f;
+	};
+
+	struct Ellipse
+	{
+		Ellipse(const glm::vec3& center, float fMajor, float fMinor, float fDegSpan)
+			: m_Center(center), m_fmajorSemiaxis(fMajor), m_fMinorSemiaxis(fMinor), m_fDegreeSpan(fDegSpan)
+		{
+			UINT uiIdx = 0;
+			for (float fTheta = 0.f; fTheta < 360.f; fTheta += fDegSpan)
+			{
+				float x = m_fmajorSemiaxis * glm::cos(glm::radians(fTheta));
+				float y = m_fMinorSemiaxis * glm::sin(glm::radians(fTheta));
+				Vertex3D vert;
+				vert.pos = glm::vec3(x, y, 0.f) + m_Center;
+				vert.color = { 1.f, 0.f, 0.f };
+				m_vecVertices.push_back(vert);
+				m_vecIndices.push_back(uiIdx++);
+			}
+			m_vecIndices.push_back(0);
+		}
+
+		glm::vec3 m_Center = { 0.f, 0.f, 0.f };
+		float m_fmajorSemiaxis = 1.f;
+		float m_fMinorSemiaxis = 0.5f;
+
+		float m_fDegreeSpan = 1.f;
+		std::vector<Vertex3D> m_vecVertices;
+		std::vector<UINT> m_vecIndices;
+	};
+}
 
 namespace DZW_VulkanWrap
 {

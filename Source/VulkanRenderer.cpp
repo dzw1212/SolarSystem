@@ -28,6 +28,8 @@
 #include "ktx.h"
 #include "ktxvulkan.h"
 
+#include "json.hpp"
+
 #define INSTANCE_NUM 9
 
 static bool ENABLE_GUI = true;
@@ -72,6 +74,8 @@ VulkanRenderer::~VulkanRenderer()
 
 void VulkanRenderer::Init()
 {
+	LoadPlanetInfo();
+
 	InitWindow();
 	CreateInstance();
 	CreateWindowSurface();
@@ -127,10 +131,22 @@ void VulkanRenderer::Init()
 	CreateMeshGridGraphicPipelineLayout();
 	CreateMeshGridGraphicPipeline();
 
+	//Ellipse
+	//CreateEllipseVertexBuffer();
+	//CreateEllipseIndexBuffer();
+	//CreateEllipseUniformBuffers();
+	//CreateEllipseDescriptorSetLayout();
+	//CreateEllipseDescriptorPool();
+	//CreateEllipseDescriptorSets();
+	//CreateEllipseGraphicPipelineLayout();
+	//CreateEllipseGraphicPipeline();
+
 	SetupCamera();
 
 	if (ENABLE_GUI)
 		g_UI.Init(this);
+
+	
 }
 
 void VulkanRenderer::Loop()
@@ -1885,6 +1901,14 @@ void VulkanRenderer::SetupCamera()
 			camera.OnMouseScroll(dOffsetX, dOffsetY);
 		}
 	);
+	glfwSetKeyCallback(m_pWindow, [](GLFWwindow* window, int nKey, int nScanmode, int nAction, int Mods)
+		{
+			if (ENABLE_GUI && ImGui::IsWindowHovered(ImGuiHoveredFlags_AnyWindow))
+				return;
+			auto& camera = *(Camera*)glfwGetWindowUserPointer(window);
+			camera.OnKeyPress(nKey);
+		}
+	);
 }
 
 void VulkanRenderer::CreateSkyboxShader()
@@ -2442,6 +2466,294 @@ void VulkanRenderer::CreateMeshGridGraphicPipeline()
 	VULKAN_ASSERT(vkCreateGraphicsPipelines(m_LogicalDevice, VK_NULL_HANDLE, 1, &pipelineCreateInfo, nullptr, &m_MeshGridGraphicPipeline), "Create mesh grid graphic pipeline failed");
 }
 
+void VulkanRenderer::CreateEllipseVertexBuffer()
+{
+	ASSERT(m_Ellipse.m_vecVertices.size() > 0, "Vertex data empty");
+	VkDeviceSize verticesSize = sizeof(m_Ellipse.m_vecVertices[0]) * m_Ellipse.m_vecVertices.size();
+
+	CreateBufferAndBindMemory(verticesSize,
+		VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+		VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+		m_EllipseVertexBuffer, m_EllipseVertexBufferMemory);
+	TransferBufferDataByStageBuffer(m_Ellipse.m_vecVertices.data(), verticesSize, m_EllipseVertexBuffer);
+}
+
+void VulkanRenderer::CreateEllipseIndexBuffer()
+{
+	VkDeviceSize indicesSize = sizeof(m_Ellipse.m_vecIndices[0]) * m_Ellipse.m_vecIndices.size();
+	if (indicesSize > 0)
+		CreateBufferAndBindMemory(indicesSize,
+			VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT,
+			VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+			m_EllipseIndexBuffer, m_EllipseIndexBufferMemory);
+	TransferBufferDataByStageBuffer(m_Ellipse.m_vecIndices.data(), indicesSize, m_EllipseIndexBuffer);
+}
+
+void VulkanRenderer::CreateEllipseUniformBuffers()
+{
+	m_vecEllipseUniformBuffers.resize(m_vecSwapChainImages.size());
+	m_vecEllipseUniformBufferMemories.resize(m_vecSwapChainImages.size());
+
+	for (size_t i = 0; i < m_vecSwapChainImages.size(); ++i)
+	{
+		CreateBufferAndBindMemory(sizeof(MeshGridUniformBufferObject),
+			VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
+			VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+			m_vecEllipseUniformBuffers[i],
+			m_vecEllipseUniformBufferMemories[i]
+		);
+	}
+}
+
+void VulkanRenderer::UpdateEllipseUniformBuffer(UINT uiIdx)
+{
+	m_EllipseUboData.model = glm::rotate(glm::mat4(1.f), glm::radians(90.f), { 1.f, 0.f, 0.f }) * glm::scale(glm::mat4(1.f), {100.f, 100.f, 1.f});
+	m_EllipseUboData.view = m_Camera.GetViewMatrix();
+	m_EllipseUboData.proj = m_Camera.GetProjMatrix();
+	//OpenGL与Vulkan的差异 - Y坐标是反的
+	m_EllipseUboData.proj[1][1] *= -1.f;
+
+	void* uniformBufferData;
+	vkMapMemory(m_LogicalDevice, m_vecEllipseUniformBufferMemories[uiIdx], 0, sizeof(MeshGridUniformBufferObject), 0, &uniformBufferData);
+	memcpy(uniformBufferData, &m_EllipseUboData, sizeof(MeshGridUniformBufferObject));
+	vkUnmapMemory(m_LogicalDevice, m_vecEllipseUniformBufferMemories[uiIdx]);
+}
+
+void VulkanRenderer::CreateEllipseDescriptorSetLayout()
+{
+	//UniformBufferObject Binding
+	VkDescriptorSetLayoutBinding uboLayoutBinding{};
+	uboLayoutBinding.binding = 0; //对应Vertex Shader中的layout binding
+	uboLayoutBinding.descriptorCount = 1;
+	uboLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+	uboLayoutBinding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT; //只需要在vertex stage生效
+	uboLayoutBinding.pImmutableSamplers = nullptr;
+
+	std::vector<VkDescriptorSetLayoutBinding> vecDescriptorLayoutBinding = {
+		uboLayoutBinding,
+	};
+
+	VkDescriptorSetLayoutCreateInfo createInfo{};
+	createInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+	createInfo.bindingCount = static_cast<UINT>(vecDescriptorLayoutBinding.size());
+	createInfo.pBindings = vecDescriptorLayoutBinding.data();
+
+	VULKAN_ASSERT(vkCreateDescriptorSetLayout(m_LogicalDevice, &createInfo, nullptr, &m_EllipseDescriptorSetLayout), "Create ellipse descriptor layout failed");
+}
+
+void VulkanRenderer::CreateEllipseDescriptorPool()
+{
+	//ubo
+	VkDescriptorPoolSize uboPoolSize{};
+	uboPoolSize.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+	uboPoolSize.descriptorCount = static_cast<UINT>(m_vecSwapChainImages.size());
+
+	std::vector<VkDescriptorPoolSize> vecPoolSize = {
+		uboPoolSize,
+	};
+
+	VkDescriptorPoolCreateInfo poolCreateInfo{};
+	poolCreateInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+	poolCreateInfo.poolSizeCount = static_cast<UINT>(vecPoolSize.size());
+	poolCreateInfo.pPoolSizes = vecPoolSize.data();
+	poolCreateInfo.maxSets = static_cast<UINT>(m_vecSwapChainImages.size());
+
+	VULKAN_ASSERT(vkCreateDescriptorPool(m_LogicalDevice, &poolCreateInfo, nullptr, &m_EllipseDescriptorPool), "Create ellipse descriptor pool failed");
+}
+
+void VulkanRenderer::CreateEllipseDescriptorSets()
+{
+	VkDescriptorSetAllocateInfo allocInfo{};
+	allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+	allocInfo.descriptorSetCount = static_cast<UINT>(m_vecSwapChainImages.size());
+	allocInfo.descriptorPool = m_EllipseDescriptorPool;
+
+	std::vector<VkDescriptorSetLayout> vecDupDescriptorSetLayout(m_vecSwapChainImages.size(), m_EllipseDescriptorSetLayout);
+	allocInfo.pSetLayouts = vecDupDescriptorSetLayout.data();
+
+	m_vecEllipseDescriptorSets.resize(m_vecSwapChainImages.size());
+	VULKAN_ASSERT(vkAllocateDescriptorSets(m_LogicalDevice, &allocInfo, m_vecEllipseDescriptorSets.data()), "Allocate ellipse desctiprot sets failed");
+
+	for (size_t i = 0; i < m_vecSwapChainImages.size(); ++i)
+	{
+		//ubo
+		VkDescriptorBufferInfo descriptorBufferInfo{};
+		descriptorBufferInfo.buffer = m_vecEllipseUniformBuffers[i];
+		descriptorBufferInfo.offset = 0;
+		descriptorBufferInfo.range = sizeof(MeshGridUniformBufferObject);
+
+		VkWriteDescriptorSet uboWrite{};
+		uboWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+		uboWrite.dstSet = m_vecEllipseDescriptorSets[i];
+		uboWrite.dstBinding = 0;
+		uboWrite.dstArrayElement = 0;
+		uboWrite.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+		uboWrite.descriptorCount = 1;
+		uboWrite.pBufferInfo = &descriptorBufferInfo;
+
+		std::vector<VkWriteDescriptorSet> vecDescriptorWrite = {
+			uboWrite,
+		};
+
+		vkUpdateDescriptorSets(m_LogicalDevice, static_cast<UINT>(vecDescriptorWrite.size()), vecDescriptorWrite.data(), 0, nullptr);
+	}
+}
+
+void VulkanRenderer::CreateEllipseGraphicPipelineLayout()
+{
+	VkPipelineLayoutCreateInfo pipelineLayoutCreateInfo{};
+	pipelineLayoutCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+	pipelineLayoutCreateInfo.setLayoutCount = 1;
+	pipelineLayoutCreateInfo.pSetLayouts = &m_EllipseDescriptorSetLayout;
+	pipelineLayoutCreateInfo.pushConstantRangeCount = 0;
+	pipelineLayoutCreateInfo.pPushConstantRanges = nullptr;
+
+	VULKAN_ASSERT(vkCreatePipelineLayout(m_LogicalDevice, &pipelineLayoutCreateInfo, nullptr, &m_EllipseGraphicPipelineLayout), "Create ellipse pipeline layout failed");
+}
+
+void VulkanRenderer::CreateEllipseGraphicPipeline()
+{
+	/****************************可编程管线*******************************/
+	VkPipelineShaderStageCreateInfo vertShaderStageCreateInfo{};
+	vertShaderStageCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+	vertShaderStageCreateInfo.stage = VK_SHADER_STAGE_VERTEX_BIT;
+	vertShaderStageCreateInfo.module = m_mapMeshGridShaderModule.at(VK_SHADER_STAGE_VERTEX_BIT); //Bytecode
+	vertShaderStageCreateInfo.pName = "main"; //要invoke的函数
+
+	VkPipelineShaderStageCreateInfo fragShaderStageCreateInfo{};
+	fragShaderStageCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+	fragShaderStageCreateInfo.stage = VK_SHADER_STAGE_FRAGMENT_BIT;
+	fragShaderStageCreateInfo.module = m_mapMeshGridShaderModule.at(VK_SHADER_STAGE_FRAGMENT_BIT); //Bytecode
+	fragShaderStageCreateInfo.pName = "main"; //要invoke的函数
+
+	VkPipelineShaderStageCreateInfo shaderStageCreateInfos[] = {
+		vertShaderStageCreateInfo,
+		fragShaderStageCreateInfo,
+	};
+
+	/*****************************固定管线*******************************/
+
+	//-----------------------Dynamic State--------------------------//
+	VkPipelineDynamicStateCreateInfo dynamicStateCreateInfo{};
+	dynamicStateCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO;
+	std::vector<VkDynamicState> vecDynamicStates = {
+		VK_DYNAMIC_STATE_VIEWPORT,
+		VK_DYNAMIC_STATE_SCISSOR,
+		VK_DYNAMIC_STATE_LINE_WIDTH,
+	};
+	dynamicStateCreateInfo.dynamicStateCount = static_cast<UINT>(vecDynamicStates.size());
+	dynamicStateCreateInfo.pDynamicStates = vecDynamicStates.data();
+
+	//-----------------------Vertex Input State--------------------------//
+	auto bindingDescription = Vertex3D::GetBindingDescription();
+	auto attributeDescriptions = Vertex3D::GetAttributeDescriptions();
+	VkPipelineVertexInputStateCreateInfo vertexInputCreateInfo{};
+	vertexInputCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
+	vertexInputCreateInfo.vertexBindingDescriptionCount = 1;
+	vertexInputCreateInfo.pVertexBindingDescriptions = &bindingDescription;
+	vertexInputCreateInfo.vertexAttributeDescriptionCount = static_cast<UINT>(attributeDescriptions.size());
+	vertexInputCreateInfo.pVertexAttributeDescriptions = attributeDescriptions.data();
+
+	//-----------------------Input Assembly State------------------------//
+	VkPipelineInputAssemblyStateCreateInfo inputAssemblyCreateInfo{};
+	inputAssemblyCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
+	inputAssemblyCreateInfo.topology = VK_PRIMITIVE_TOPOLOGY_LINE_STRIP;
+	inputAssemblyCreateInfo.primitiveRestartEnable = VK_FALSE;
+
+
+	//-----------------------Viewport State--------------------------//
+	VkPipelineViewportStateCreateInfo viewportStateCreateInfo{};
+	viewportStateCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
+	viewportStateCreateInfo.viewportCount = 1;
+	viewportStateCreateInfo.scissorCount = 1;
+
+	//-----------------------Raserization State--------------------------//
+	VkPipelineRasterizationStateCreateInfo rasterizationStateCreateInfo{};
+	rasterizationStateCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
+	rasterizationStateCreateInfo.depthClampEnable = VK_FALSE;	//开启后，超过远近平面的部分会被截断在远近平面上，而不是丢弃
+	rasterizationStateCreateInfo.rasterizerDiscardEnable = VK_FALSE;	//开启后，禁止所有图元经过光栅化器
+	rasterizationStateCreateInfo.polygonMode = VK_POLYGON_MODE_LINE;	//图元模式，可以是FILL、LINE、POINT
+	rasterizationStateCreateInfo.lineWidth = m_fMeshGridLineWidth;	//指定光栅化后的线段宽度
+	rasterizationStateCreateInfo.cullMode = VK_CULL_MODE_NONE;
+	rasterizationStateCreateInfo.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE; //顶点序，可以是顺时针cw或逆时针ccw
+	rasterizationStateCreateInfo.depthBiasEnable = VK_FALSE; //深度偏移，一般用于Shaodw Map中避免阴影痤疮
+	rasterizationStateCreateInfo.depthBiasConstantFactor = 0.f;
+	rasterizationStateCreateInfo.depthBiasClamp = 0.f;
+	rasterizationStateCreateInfo.depthBiasSlopeFactor = 0.f;
+
+	//-----------------------Multisample State--------------------------//
+	VkPipelineMultisampleStateCreateInfo multisamplingStateCreateInfo{};
+	multisamplingStateCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
+	multisamplingStateCreateInfo.sampleShadingEnable = VK_FALSE;
+	multisamplingStateCreateInfo.minSampleShading = 0.8f;
+	multisamplingStateCreateInfo.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
+	multisamplingStateCreateInfo.minSampleShading = 1.f;
+	multisamplingStateCreateInfo.pSampleMask = nullptr;
+	multisamplingStateCreateInfo.alphaToCoverageEnable = VK_FALSE;
+	multisamplingStateCreateInfo.alphaToOneEnable = VK_FALSE;
+
+	//-----------------------Depth Stencil State--------------------------//
+	VkPipelineDepthStencilStateCreateInfo depthStencilStateCreateInfo{};
+	depthStencilStateCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
+	depthStencilStateCreateInfo.depthTestEnable = VK_TRUE; //作为背景，始终在最远处，不进行深度检测
+	depthStencilStateCreateInfo.depthWriteEnable = VK_TRUE;
+	depthStencilStateCreateInfo.depthCompareOp = VK_COMPARE_OP_LESS_OR_EQUAL;
+	depthStencilStateCreateInfo.depthBoundsTestEnable = VK_FALSE;
+	depthStencilStateCreateInfo.minDepthBounds = 0.f;
+	depthStencilStateCreateInfo.maxDepthBounds = 1.f;
+	depthStencilStateCreateInfo.stencilTestEnable = VK_FALSE;
+	depthStencilStateCreateInfo.front = {};
+	depthStencilStateCreateInfo.back = {};
+
+	//-----------------------Color Blend State--------------------------//
+	VkPipelineColorBlendStateCreateInfo colorBlendStateCreateInfo{};
+	colorBlendStateCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
+	colorBlendStateCreateInfo.logicOpEnable = VK_FALSE;
+	colorBlendStateCreateInfo.logicOp = VK_LOGIC_OP_COPY;
+	colorBlendStateCreateInfo.attachmentCount = 1;
+
+	VkPipelineColorBlendAttachmentState colorBlendAttachment{};
+	colorBlendAttachment.colorWriteMask =
+		VK_COLOR_COMPONENT_R_BIT
+		| VK_COLOR_COMPONENT_G_BIT
+		| VK_COLOR_COMPONENT_B_BIT
+		| VK_COLOR_COMPONENT_A_BIT;
+	colorBlendAttachment.blendEnable = VK_FALSE;
+	colorBlendAttachment.srcColorBlendFactor = VK_BLEND_FACTOR_ONE;
+	colorBlendAttachment.dstColorBlendFactor = VK_BLEND_FACTOR_ZERO;
+	colorBlendAttachment.colorBlendOp = VK_BLEND_OP_ADD;
+	colorBlendAttachment.srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
+	colorBlendAttachment.dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO;
+	colorBlendAttachment.alphaBlendOp = VK_BLEND_OP_ADD;
+
+	colorBlendStateCreateInfo.pAttachments = &colorBlendAttachment;
+	colorBlendStateCreateInfo.blendConstants[0] = 0.f;
+	colorBlendStateCreateInfo.blendConstants[1] = 0.f;
+	colorBlendStateCreateInfo.blendConstants[2] = 0.f;
+	colorBlendStateCreateInfo.blendConstants[3] = 0.f;
+
+	/***********************************************************************/
+	VkGraphicsPipelineCreateInfo pipelineCreateInfo{};
+	pipelineCreateInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
+	pipelineCreateInfo.stageCount = static_cast<UINT>(m_mapMeshGridShaderModule.size());
+	pipelineCreateInfo.pStages = shaderStageCreateInfos;
+	pipelineCreateInfo.pDynamicState = &dynamicStateCreateInfo;
+	pipelineCreateInfo.pVertexInputState = &vertexInputCreateInfo;
+	pipelineCreateInfo.pInputAssemblyState = &inputAssemblyCreateInfo;
+	pipelineCreateInfo.pViewportState = &viewportStateCreateInfo;
+	pipelineCreateInfo.pRasterizationState = &rasterizationStateCreateInfo;
+	pipelineCreateInfo.pMultisampleState = &multisamplingStateCreateInfo;
+	pipelineCreateInfo.pDepthStencilState = &depthStencilStateCreateInfo;
+	pipelineCreateInfo.pColorBlendState = &colorBlendStateCreateInfo;
+	pipelineCreateInfo.layout = m_EllipseGraphicPipelineLayout;
+	pipelineCreateInfo.renderPass = m_RenderPass;
+	pipelineCreateInfo.subpass = 0;
+	pipelineCreateInfo.basePipelineHandle = VK_NULL_HANDLE;
+	pipelineCreateInfo.basePipelineIndex = -1;
+
+	VULKAN_ASSERT(vkCreateGraphicsPipelines(m_LogicalDevice, VK_NULL_HANDLE, 1, &pipelineCreateInfo, nullptr, &m_EllipseGraphicPipeline), "Create ellipse graphic pipeline failed");
+}
+
 void VulkanRenderer::CreateSkyboxUniformBuffers()
 {
 	m_vecSkyboxUniformBuffers.resize(m_vecSwapChainImages.size());
@@ -2680,6 +2992,25 @@ void VulkanRenderer::RecordCommandBuffer(VkCommandBuffer& commandBuffer, UINT ui
 		vkCmdSetLineWidth(commandBuffer, 1.f);
 	}
 
+	if (m_bEnableEllipse)
+	{
+		vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m_EllipseGraphicPipeline);
+		VkBuffer ellipseVertexBuffers[] = {
+			m_EllipseVertexBuffer,
+		};
+		VkDeviceSize ellipseOffsets[]{ 0 };
+		vkCmdBindVertexBuffers(commandBuffer, 0, 1, ellipseVertexBuffers, ellipseOffsets);
+		vkCmdBindIndexBuffer(commandBuffer, m_EllipseIndexBuffer, 0, VK_INDEX_TYPE_UINT32);
+		vkCmdBindDescriptorSets(commandBuffer,
+			VK_PIPELINE_BIND_POINT_GRAPHICS,
+			m_EllipseGraphicPipelineLayout,
+			0, 1,
+			&m_vecEllipseDescriptorSets[uiIdx],
+			0, NULL);
+
+		vkCmdDrawIndexed(commandBuffer, static_cast<UINT>(m_Ellipse.m_vecIndices.size()), 1, 0, 0, 0);
+	}
+
 	vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m_GraphicPipeline);
 	VkBuffer vertexBuffers[] = {
 		m_Model.m_VertexBuffer,
@@ -2721,6 +3052,7 @@ void VulkanRenderer::UpdateUniformBuffer(UINT uiIdx)
 
 	float time = std::chrono::duration<float, std::chrono::seconds::period>(currentTime - startTime).count();
 
+
 	m_UboData.view = m_Camera.GetViewMatrix();
 	m_UboData.proj = m_Camera.GetProjMatrix();
 	//OpenGL与Vulkan的差异 - Y坐标是反的
@@ -2735,9 +3067,18 @@ void VulkanRenderer::UpdateUniformBuffer(UINT uiIdx)
 	float* pTextureIdx = nullptr;
 	for (UINT i = 0; i < INSTANCE_NUM; ++i)
 	{
+		ASSERT(i < m_vecPlanetInfo.size());
+		auto planetInfo = m_vecPlanetInfo[i];
+
 		pModelMat = (glm::mat4*)((size_t)m_DynamicUboData.model + (i * m_DynamicAlignment));
-		*pModelMat = glm::translate(glm::mat4(1.f), { ((float)i - (float)(INSTANCE_NUM / 2)) * m_fInstanceSpan, 0.f, 0.f });
-		//*pModelMat = glm::rotate(glm::mat4(1.f), i * time * 1.f, { 0.f, 0.f, 1.f }) * *pModelMat;
+
+		//auto translateComponent = glm::translate(glm::mat4(1.f), { planetInfo.fOrbitRadius * 100.f, 0.f, 0.f });
+		//auto rotateComponent = glm::rotate(glm::mat4(1.f), glm::radians(planetInfo.fRotationAxisDegree), { 0.f, 0.f, -1.f });
+		//auto scaleComponent = glm::scale(glm::mat4(1.f), glm::vec3(static_cast<float>(planetInfo.fDiameter / 100.f)));
+
+		//*pModelMat = translateComponent * rotateComponent * scaleComponent;
+		*pModelMat = glm::translate(glm::mat4(1.f), { (float)i * 50.f, 0.f, 0.f});
+		
 		pTextureIdx = (float*)((size_t)m_DynamicUboData.fTextureIndex + (i * m_DynamicAlignment));
 		*pTextureIdx = (float)(i % INSTANCE_NUM);
 	}
@@ -2799,6 +3140,9 @@ void VulkanRenderer::Render()
 
 	if (m_bEnableMeshGrid)
 		UpdateMeshGridUniformBuffer(m_uiCurFrameIdx);
+
+	if (m_bEnableEllipse)
+		UpdateEllipseUniformBuffer(m_uiCurFrameIdx);
 
 	RecordCommandBuffer(m_vecCommandBuffers[m_uiCurFrameIdx], m_uiCurFrameIdx);
 
@@ -3312,5 +3656,162 @@ void VulkanRenderer::FreeModel(DZW_VulkanWrap::Model& model)
 	}
 }
 
+void VulkanRenderer::LoadPlanetInfo()
+{
+	std::filesystem::path configPath = "./config.json";
+	ASSERT(std::filesystem::exists(configPath), std::format("planet config {} not exist", configPath.string()));
+	std::ifstream file(configPath);
+
+	nlohmann::json jsonFile;
+	jsonFile << file;
+
+	m_vecPlanetInfo.clear();
+
+	std::vector<std::string> vecPlanet = {"Sun", "Mercury", "Venus", "Earth", "Mars", "Juipter", "Saturn", "Uranus", "Neptune"};
+
+	for (auto it = vecPlanet.begin(); it != vecPlanet.end(); ++it)
+	{
+		PlanetInfo info;
+		auto node = jsonFile[*it];
+		info.strDesc = node["Desc"];
+		info.fDiameter = static_cast<float>(node["Diameter"]);
+		info.fRotationAxisDegree = node["RotationAxisDegree"];
+		info.fRotationPeriod = node["RotationPeriod"];
+		info.fRevolutionPeriod = node["RevolutionPeriod"];
+		info.fOrbitRadius = node["OrbitRadius"];
+
+		m_vecPlanetInfo.push_back(info);
+	}
+}
+
+void VulkanRenderer::CreateBlinnPhongShaderModule()
+{
+	std::unordered_map<VkShaderStageFlagBits, std::filesystem::path> mapBlinnPhongShaderPath = {
+	{ VK_SHADER_STAGE_VERTEX_BIT,	"./Assert/Shader/BlinnPhong/vert.spv" },
+	{ VK_SHADER_STAGE_FRAGMENT_BIT,	"./Assert/Shader/BlinnPhong/frag.spv" },
+	};
+	ASSERT(mapBlinnPhongShaderPath.size() > 0, "Detect no shader spv file");
+
+	m_mapBlinnPhongShaderModule.clear();
+
+	for (const auto& spvPath : mapBlinnPhongShaderPath)
+	{
+		auto shaderModule = DZW_VulkanUtils::CreateShaderModule(m_LogicalDevice, DZW_VulkanUtils::ReadShaderFile(spvPath.second));
+
+		m_mapBlinnPhongShaderModule[spvPath.first] = shaderModule;
+	}
+}
+
+void VulkanRenderer::CreateBlinnPhongMVPUniformBuffers()
+{
+	m_vecBlinnPhongMVPUniformBuffers.resize(m_vecSwapChainImages.size());
+	m_vecBlinnPhongMVPUniformBufferMemories.resize(m_vecSwapChainImages.size());
+
+	for (size_t i = 0; i < m_vecSwapChainImages.size(); ++i)
+	{
+		CreateBufferAndBindMemory(sizeof(BlinnPhongMVPUniformBufferObject),
+			VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
+			VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+			m_vecBlinnPhongMVPUniformBuffers[i],
+			m_vecBlinnPhongMVPUniformBufferMemories[i]
+		);
+	}
+}
+
+void VulkanRenderer::UpdateBlinnPhongMVPUniformBuffer(UINT uiIdx)
+{
+	m_BlinnPhongMVPUBOData.model = glm::translate(glm::mat4(1.f), {0.f, 100.f, 0.f});
+	m_BlinnPhongMVPUBOData.view = m_Camera.GetViewMatrix();
+	m_BlinnPhongMVPUBOData.proj = m_Camera.GetProjMatrix();
+	//OpenGL与Vulkan的差异 - Y坐标是反的
+	m_BlinnPhongMVPUBOData.proj[1][1] *= -1.f;
+
+	m_BlinnPhongMVPUBOData.mv_normal = glm::transpose(glm::inverse(m_BlinnPhongMVPUBOData.view * m_BlinnPhongMVPUBOData.model));
+
+	void* uniformBufferData;
+	vkMapMemory(m_LogicalDevice, m_vecMeshGridUniformBufferMemories[uiIdx], 0, sizeof(BlinnPhongMVPUniformBufferObject), 0, &uniformBufferData);
+	memcpy(uniformBufferData, &m_BlinnPhongMVPUBOData, sizeof(BlinnPhongMVPUniformBufferObject));
+	vkUnmapMemory(m_LogicalDevice, m_vecMeshGridUniformBufferMemories[uiIdx]);
+}
+
+void VulkanRenderer::CreateBlinnPhongLightUniformBuffers()
+{
+	m_vecBlinnPhongLightUniformBuffers.resize(m_vecSwapChainImages.size());
+	m_vecBlinnPhongLightUniformBufferMemories.resize(m_vecSwapChainImages.size());
+
+	for (size_t i = 0; i < m_vecSwapChainImages.size(); ++i)
+	{
+		CreateBufferAndBindMemory(sizeof(BlinnPhongLightUniformBufferObject),
+			VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
+			VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+			m_vecBlinnPhongLightUniformBuffers[i],
+			m_vecBlinnPhongLightUniformBufferMemories[i]
+		);
+	}
+}
+
+void VulkanRenderer::UpdateBlinnPhongLightUniformBuffer(UINT uiIdx)
+{
+	m_BlinnPhongLightUBOData.position = m_BlinnPhongPointLight.position;
+	m_BlinnPhongLightUBOData.ambient = m_BlinnPhongPointLight.GetAmbient();
+	m_BlinnPhongLightUBOData.diffuse = m_BlinnPhongPointLight.GetDiffuse();
+	m_BlinnPhongLightUBOData.specular = m_BlinnPhongPointLight.GetSpecular();
 
 
+	void* uniformBufferData;
+	vkMapMemory(m_LogicalDevice, m_vecMeshGridUniformBufferMemories[uiIdx], 0, sizeof(BlinnPhongLightUniformBufferObject), 0, &uniformBufferData);
+	memcpy(uniformBufferData, &m_BlinnPhongLightUBOData, sizeof(BlinnPhongLightUniformBufferObject));
+	vkUnmapMemory(m_LogicalDevice, m_vecBlinnPhongLightUniformBufferMemories[uiIdx]);
+}
+
+void VulkanRenderer::CreateBlinnPhongMaterialUniformBuffers()
+{
+	m_vecBlinnPhongLightUniformBuffers.resize(m_vecSwapChainImages.size());
+	m_vecBlinnPhongLightUniformBufferMemories.resize(m_vecSwapChainImages.size());
+
+	for (size_t i = 0; i < m_vecSwapChainImages.size(); ++i)
+	{
+		CreateBufferAndBindMemory(sizeof(BlinnPhongLightUniformBufferObject),
+			VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
+			VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+			m_vecBlinnPhongLightUniformBuffers[i],
+			m_vecBlinnPhongLightUniformBufferMemories[i]
+		);
+	}
+}
+
+void VulkanRenderer::UpdateBlinnPhongMaterialUniformBuffer(UINT uiIdx)
+{
+	m_BlinnPhongMVPUBOData.model = glm::translate(glm::mat4(1.f), { 0.f, 100.f, 0.f });
+	m_BlinnPhongMVPUBOData.view = m_Camera.GetViewMatrix();
+	m_BlinnPhongMVPUBOData.proj = m_Camera.GetProjMatrix();
+	//OpenGL与Vulkan的差异 - Y坐标是反的
+	m_BlinnPhongMVPUBOData.proj[1][1] *= -1.f;
+
+	m_BlinnPhongMVPUBOData.mv_normal = glm::transpose(glm::inverse(m_BlinnPhongMVPUBOData.view * m_BlinnPhongMVPUBOData.model));
+
+	void* uniformBufferData;
+	vkMapMemory(m_LogicalDevice, m_vecMeshGridUniformBufferMemories[uiIdx], 0, sizeof(BlinnPhongMVPUniformBufferObject), 0, &uniformBufferData);
+	memcpy(uniformBufferData, &m_BlinnPhongMVPUBOData, sizeof(BlinnPhongMVPUniformBufferObject));
+	vkUnmapMemory(m_LogicalDevice, m_vecMeshGridUniformBufferMemories[uiIdx]);
+}
+
+void VulkanRenderer::CreateBlinnPhongDescriptorSetLayout()
+{
+}
+
+void VulkanRenderer::CreateBlinnPhongDescriptorPool()
+{
+}
+
+void VulkanRenderer::CreateBlinnPhongDescriptorSets()
+{
+}
+
+void VulkanRenderer::CreateBlinnPhongGraphicPipelineLayout()
+{
+}
+
+void VulkanRenderer::CreateBlinnPhongGraphicPipeline()
+{
+}

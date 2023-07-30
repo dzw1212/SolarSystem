@@ -58,6 +58,20 @@ void Camera::OnMouseScroll(double offsetX, double offsetY)
 	UpdateView();
 }
 
+void Camera::OnKeyPress(int nKey)
+{
+	if (nKey == GLFW_KEY_W)
+		MouseZoom(2.f);
+	else if (nKey == GLFW_KEY_A)
+		m_FocalPoint -= GetRightDirection() * 2.f;
+	else if (nKey == GLFW_KEY_D)
+		m_FocalPoint += GetRightDirection() * 2.f;
+	else if (nKey == GLFW_KEY_S)
+		MouseZoom(-2.f);
+
+	UpdateView();
+}
+
 void Camera::SetViewportSize(float fWidth, float fHeight)
 {
 	m_fViewportWidth = fWidth;

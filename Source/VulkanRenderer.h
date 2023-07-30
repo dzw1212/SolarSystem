@@ -13,6 +13,16 @@
 
 #include "VulkanWrap.h"
 
+struct PlanetInfo
+{
+	std::string strDesc;
+	float fDiameter = 0.f;	//单位：km
+	float fRotationAxisDegree = 0.f; //单位：度
+	float fRotationPeriod = 0.f; //单位：天
+	float fRevolutionPeriod = 0.f; //单位：年
+	float fOrbitRadius = 0.f; //单位：AU，即149.6百万千米
+};
+
 namespace std
 {
 	template<> struct hash<Vertex3D>
@@ -218,6 +228,10 @@ private:
 	void FreeModel(DZW_VulkanWrap::Model& model);
 
 public:
+	std::vector<PlanetInfo> m_vecPlanetInfo;
+	void LoadPlanetInfo();
+
+public:
 	Camera m_Camera;
 	void SetupCamera();
 
@@ -269,8 +283,6 @@ public:
 	float* GetMeshGridSplit() { return &m_fMeshGridSplit; }
 	float* GetMeshGridLineWidth() { return &m_fMeshGridLineWidth; }
 
-	float* GetInstanceSpan() { return &m_fInstanceSpan; }
-
 public:
 	struct SkyboxUniformBufferObject
 	{
@@ -318,6 +330,64 @@ public:
 
 	void CreateMeshGridGraphicPipelineLayout();
 	void CreateMeshGridGraphicPipeline();
+
+public:
+	void CreateEllipseVertexBuffer();
+	void CreateEllipseIndexBuffer();
+
+	void CreateEllipseUniformBuffers();
+	void UpdateEllipseUniformBuffer(UINT uiIdx);
+
+	void CreateEllipseDescriptorSetLayout();
+	void CreateEllipseDescriptorPool();
+	void CreateEllipseDescriptorSets();
+
+	void CreateEllipseGraphicPipelineLayout();
+	void CreateEllipseGraphicPipeline();
+
+public:
+	struct BlinnPhongMVPUniformBufferObject
+	{
+		glm::mat4 model;
+		glm::mat4 view;
+		glm::mat4 proj;
+		glm::mat4 mv_normal; //用于将normal转到视图空间
+	};
+
+	struct BlinnPhongLightUniformBufferObject
+	{
+		glm::vec3 position;
+		glm::vec4 ambient;
+		glm::vec4 diffuse;
+		glm::vec4 specular;
+	};
+
+	struct BlinnPhongMaterialUniformBufferObject
+	{
+		glm::vec4 ambient;
+		glm::vec4 diffuse;
+		glm::vec4 specular;
+		float shininess;
+	};
+
+	void CreateBlinnPhongShaderModule();
+
+	void CreateBlinnPhongMVPUniformBuffers();
+	void UpdateBlinnPhongMVPUniformBuffer(UINT uiIdx);
+
+	void CreateBlinnPhongLightUniformBuffers();
+	void UpdateBlinnPhongLightUniformBuffer(UINT uiIdx);
+
+	void CreateBlinnPhongMaterialUniformBuffers();
+	void UpdateBlinnPhongMaterialUniformBuffer(UINT uiIdx);
+
+	void CreateBlinnPhongDescriptorSetLayout();
+	void CreateBlinnPhongDescriptorPool();
+	void CreateBlinnPhongDescriptorSets();
+
+	void CreateBlinnPhongGraphicPipelineLayout();
+	void CreateBlinnPhongGraphicPipeline();
+
 
 private:
 	UINT m_uiWindowWidth;
@@ -399,8 +469,6 @@ private:
 
 	UINT m_uiCurFrameIdx;
 
-	float m_fInstanceSpan = 50.f;
-
 	bool m_bNeedResize = false;
 
 	//Dynamic Uniform
@@ -426,7 +494,7 @@ private:
 	VkPipeline m_SkyboxGraphicPipeline;
 
 	//Mesh Grid
-	bool m_bEnableMeshGrid = true;
+	bool m_bEnableMeshGrid = false;
 	float m_fMeshGridSize = 500.0f;
 	float m_fMeshGridSplit = 10.f;
 	float m_fMeshGridLineWidth = 2.f;
@@ -449,4 +517,43 @@ private:
 	VkPipeline m_MeshGridGraphicPipeline;
 
 	//ellipse
+	bool m_bEnableEllipse = false;
+	DZW_MathWrap::Ellipse m_Ellipse = DZW_MathWrap::Ellipse({0.f, 0.f, 0.f}, 1.f, 0.5f, 1.f);
+	MeshGridUniformBufferObject m_EllipseUboData;
+	std::vector<VkBuffer> m_vecEllipseUniformBuffers;
+	std::vector<VkDeviceMemory> m_vecEllipseUniformBufferMemories;
+	VkBuffer m_EllipseVertexBuffer;
+	VkDeviceMemory m_EllipseVertexBufferMemory;
+	VkBuffer m_EllipseIndexBuffer;
+	VkDeviceMemory m_EllipseIndexBufferMemory;
+	VkDescriptorSetLayout m_EllipseDescriptorSetLayout;
+	VkDescriptorPool m_EllipseDescriptorPool;
+	std::vector<VkDescriptorSet> m_vecEllipseDescriptorSets;
+	VkPipelineLayout m_EllipseGraphicPipelineLayout;
+	VkPipeline m_EllipseGraphicPipeline;
+
+	//Blinn-Phong
+	DZW_MaterialWrap::BlinnPhongMaterial m_BlinnPhongMaterial;
+	DZW_LightWrap::BlinnPhongPointLight m_BlinnPhongPointLight;
+
+	std::unordered_map<VkShaderStageFlagBits, VkShaderModule> m_mapBlinnPhongShaderModule;
+
+	BlinnPhongMVPUniformBufferObject m_BlinnPhongMVPUBOData;
+	std::vector<VkBuffer> m_vecBlinnPhongMVPUniformBuffers;
+	std::vector<VkDeviceMemory> m_vecBlinnPhongMVPUniformBufferMemories;
+
+	BlinnPhongLightUniformBufferObject m_BlinnPhongLightUBOData;
+	std::vector<VkBuffer> m_vecBlinnPhongLightUniformBuffers;
+	std::vector<VkDeviceMemory> m_vecBlinnPhongLightUniformBufferMemories;
+
+	BlinnPhongMaterialUniformBufferObject m_BlinnPhongMaterialUBOData;
+	std::vector<VkBuffer> m_vecBlinnPhongMaterialUniformBuffers;
+	std::vector<VkDeviceMemory> m_vecBlinnPhongMaterialUniformBufferMemories;
+
+	VkDescriptorSetLayout m_BlinnPhongDescriptorSetLayout;
+	VkDescriptorPool m_BlinnPhongDescriptorPool;
+	std::vector<VkDescriptorSet> m_vecBlinnPhongDescriptorSets;
+
+	VkPipelineLayout m_BlinnPhongGraphicPipelineLayout;
+	VkPipeline m_BlinnPhongGraphicPipeline;
 };

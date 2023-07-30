@@ -138,8 +138,6 @@ void UI::Draw()
     if (ImGui::SliderFloat("Texture Lod", &fLod, 0.f, static_cast<float>(m_pRenderer->GetTextureMaxLod()), "%.1f"))
         m_pRenderer->SetTextureLod(fLod);
 
-    ImGui::DragFloat("Instance Span", m_pRenderer->GetInstanceSpan(), 1.f, 0.f, 100.f, "%.1f");
-
     ImGui::CollapsingHeader("Skybox", ImGuiTreeNodeFlags_CollapsingHeader);
     ImGui::Checkbox("Enable", m_pRenderer->GetSkyboxEnable());
     ImGui::DragFloat("Rotate Speed", m_pRenderer->GetSkyboxRotateSpeed(), 0.01f, 1.f, 10.f, "%.1f");

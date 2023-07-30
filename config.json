@@ -1,55 +1,91 @@
 {
     "Sun" : {
-        "Desc" : "太阳",
+        "Desc" : "Sun",
         "Texture" : "./Assert/Texture/Sun/8k_sun.jpg",
-        "Diameter" : 1392700
+        "Diameter" : 139.2700,
+        "RotationAxisDegree" : 7.25,
+        "RotationPeriod" : 25.05,
+        "RevolutionPeriod" : 0.0,
+        "OrbitRadius" : 0.0
     },
     "Mercury" :
     {
-        "Desc" : "水星",
+        "Desc" : "Mercury",
         "Texture" : "./Assert/Texture/Mercury/8k_mercury.jpg",
-        "Diameter" : 4879
+        "Diameter" : 4.879,
+        "RotationAxisDegree" : 0.034,
+        "RotationPeriod" : 58.65,
+        "RevolutionPeriod" : 0.24,
+        "OrbitRadius" : 0.39
     },
     "Venus" :
     {
-        "Desc" : "金星",
+        "Desc" : "Venus",
         "Texture" : "./Assert/Texture/Venus/4k_venus_atmosphere.jpg",
-        "Diameter" : 12104
+        "Diameter" : 12.104,
+        "RotationAxisDegree" : 177.36,
+        "RotationPeriod" : 243.02,
+        "RevolutionPeriod" : 0.62,
+        "OrbitRadius" : 0.72
     },
     "Earth" :
     {
-        "Desc" : "地球",
+        "Desc" : "Earth",
         "Texture" : "./Assert/Texture/Earth/8k_earth_daymap.jpg",
-        "Diameter" : 12742
+        "Diameter" : 12.742,
+        "RotationAxisDegree" : 23.44,
+        "RotationPeriod" : 1.0,
+        "RevolutionPeriod" : 1.0,
+        "OrbitRadius" : 1.0
     },
     "Mars" :
     {
-        "Desc" : "火星",
+        "Desc" : "Mars",
         "Texture" : "./Assert/Texture/Mars/8k_mars.jpg",
-        "Diameter" : 6779
+        "Diameter" : 6.779,
+        "RotationAxisDegree" : 25.19,
+        "RotationPeriod" : 1.023,
+        "RevolutionPeriod" : 1.88,
+        "OrbitRadius" : 1.52
     },
     "Juipter" :
     {
-        "Desc" : "木星",
+        "Desc" : "Juipter",
         "Texture" : "./Assert/Texture/Juipter/8k_jupiter.jpg",
-        "Diameter" : 139820
+        "Diameter" : 139.820,
+        "RotationAxisDegree" : 3.13,
+        "RotationPeriod" : 0.41,
+        "RevolutionPeriod" : 11.86,
+        "OrbitRadius" : 5.2
     },
     "Saturn" :
     {
-        "Desc" : "土星",
+        "Desc" : "Saturn",
         "Texture" : "./Assert/Texture/Saturn/8k_saturn.jpg",
-        "Diameter" : 116460
+        "Diameter" : 116.460,
+        "RotationAxisDegree" : 26.73,
+        "RotationPeriod" : 0.444,
+        "RevolutionPeriod" : 29.46,
+        "OrbitRadius" : 9.58
     },
     "Uranus" :
     {
-        "Desc" : "天王星",
+        "Desc" : "Uranus",
         "Texture" : "./Assert/Texture/Uranus/2k_uranus.jpg",
-        "Diameter" : 50724
+        "Diameter" : 50.724,
+        "RotationAxisDegree" : 97.77,
+        "RotationPeriod" : 0.72,
+        "RevolutionPeriod" : 84,
+        "OrbitRadius" : 19.18
     },
     "Neptune" :
     {
-        "Desc" : "海王星",
+        "Desc" : "Nepturn",
         "Texture" : "./Assert/Texture/Neptune/2k_neptune.jpg",
-        "Diameter" : 49244
+        "Diameter" : 49.244,
+        "RotationAxisDegree" : 28.32,
+        "RotationPeriod" : 0.67,
+        "RevolutionPeriod" : 164.8,
+        "OrbitRadius" : 30.07
     }
 }

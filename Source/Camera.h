@@ -18,6 +18,7 @@ public:
 
 	void Tick();
 	void OnMouseScroll(double offsetX, double offsetY);
+	void OnKeyPress(int nKey);
 
 	inline void SetWindow(GLFWwindow* pWindow) { m_pWindow = pWindow; }
 
