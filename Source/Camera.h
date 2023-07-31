@@ -76,7 +76,7 @@ private:
 	glm::vec3 m_Position = { 0.f, 0.f, 5.f };
 	glm::vec3 m_FocalPoint = { 0.f, 0.f, 0.f };
 
-	float m_fDistance = 100.f;
+	float m_fDistance = 10.f;
 
 	float m_fPitch = 0.f;
 	float m_fYaw = 0.f;

@@ -360,6 +360,12 @@ public:
 		glm::vec4 ambient;
 		glm::vec4 diffuse;
 		glm::vec4 specular;
+		float intensify;
+
+		//Attenuation
+		float constant;
+		float linear;
+		float quadratic;
 	};
 
 	struct BlinnPhongMaterialUniformBufferObject
@@ -369,6 +375,8 @@ public:
 		glm::vec4 specular;
 		float shininess;
 	};
+
+	void InitBlinnPhongLightMaterialInfo();
 
 	void CreateBlinnPhongShaderModule();
 
@@ -533,8 +541,11 @@ private:
 	VkPipeline m_EllipseGraphicPipeline;
 
 	//Blinn-Phong
+	bool m_bEnableBlinnPhong = true;
 	DZW_MaterialWrap::BlinnPhongMaterial m_BlinnPhongMaterial;
 	DZW_LightWrap::BlinnPhongPointLight m_BlinnPhongPointLight;
+
+	DZW_VulkanWrap::Model m_BlinnPhongModel;
 
 	std::unordered_map<VkShaderStageFlagBits, VkShaderModule> m_mapBlinnPhongShaderModule;
 

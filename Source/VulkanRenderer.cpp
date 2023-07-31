@@ -99,7 +99,7 @@ void VulkanRenderer::Init()
 	
 	CreateSyncObjects();
 
-	LoadModel("./Assert/Model/sphere.obj", m_Model);
+	LoadModel("./Assert/Model/sphere.gltf", m_Model);
 	LoadTexture("./Assert/Texture/solarsystem_array_rgba8.ktx", m_Texture);
 	CreateShader();
 	CreateUniformBuffers();
@@ -140,6 +140,19 @@ void VulkanRenderer::Init()
 	//CreateEllipseDescriptorSets();
 	//CreateEllipseGraphicPipelineLayout();
 	//CreateEllipseGraphicPipeline();
+
+	//BlinnPhong
+	InitBlinnPhongLightMaterialInfo();
+	LoadModel("./Assert/Model/sphere.gltf", m_BlinnPhongModel);
+	CreateBlinnPhongShaderModule();
+	CreateBlinnPhongMVPUniformBuffers();
+	CreateBlinnPhongLightUniformBuffers();
+	CreateBlinnPhongMaterialUniformBuffers();
+	CreateBlinnPhongDescriptorSetLayout();
+	CreateBlinnPhongDescriptorPool();
+	CreateBlinnPhongDescriptorSets();
+	CreateBlinnPhongGraphicPipelineLayout();
+	CreateBlinnPhongGraphicPipeline();
 
 	SetupCamera();
 
@@ -3011,6 +3024,25 @@ void VulkanRenderer::RecordCommandBuffer(VkCommandBuffer& commandBuffer, UINT ui
 		vkCmdDrawIndexed(commandBuffer, static_cast<UINT>(m_Ellipse.m_vecIndices.size()), 1, 0, 0, 0);
 	}
 
+	if (m_bEnableBlinnPhong)
+	{
+		vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m_BlinnPhongGraphicPipeline);
+		VkBuffer blinnPhongVertexBuffers[] = {
+			m_BlinnPhongModel.m_VertexBuffer,
+		};
+		VkDeviceSize blinnPhongOffsets[]{ 0 };
+		vkCmdBindVertexBuffers(commandBuffer, 0, 1, blinnPhongVertexBuffers, blinnPhongOffsets);
+		vkCmdBindIndexBuffer(commandBuffer, m_BlinnPhongModel.m_IndexBuffer, 0, VK_INDEX_TYPE_UINT32);
+		vkCmdBindDescriptorSets(commandBuffer,
+			VK_PIPELINE_BIND_POINT_GRAPHICS,
+			m_BlinnPhongGraphicPipelineLayout,
+			0, 1,
+			&m_vecBlinnPhongDescriptorSets[uiIdx],
+			0, NULL);
+
+		vkCmdDrawIndexed(commandBuffer, static_cast<UINT>(m_BlinnPhongModel.m_vecIndices.size()), 1, 0, 0, 0);
+	}
+
 	vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m_GraphicPipeline);
 	VkBuffer vertexBuffers[] = {
 		m_Model.m_VertexBuffer,
@@ -3077,7 +3109,7 @@ void VulkanRenderer::UpdateUniformBuffer(UINT uiIdx)
 		//auto scaleComponent = glm::scale(glm::mat4(1.f), glm::vec3(static_cast<float>(planetInfo.fDiameter / 100.f)));
 
 		//*pModelMat = translateComponent * rotateComponent * scaleComponent;
-		*pModelMat = glm::translate(glm::mat4(1.f), { (float)i * 50.f, 0.f, 0.f});
+		*pModelMat = glm::translate(glm::mat4(1.f), { (float)i * 10.f, 0.f, 0.f});
 		
 		pTextureIdx = (float*)((size_t)m_DynamicUboData.fTextureIndex + (i * m_DynamicAlignment));
 		*pTextureIdx = (float)(i % INSTANCE_NUM);
@@ -3144,9 +3176,14 @@ void VulkanRenderer::Render()
 	if (m_bEnableEllipse)
 		UpdateEllipseUniformBuffer(m_uiCurFrameIdx);
 
-	RecordCommandBuffer(m_vecCommandBuffers[m_uiCurFrameIdx], m_uiCurFrameIdx);
+	if (m_bEnableBlinnPhong)
+	{
+		UpdateBlinnPhongMVPUniformBuffer(m_uiCurFrameIdx);
+		UpdateBlinnPhongLightUniformBuffer(m_uiCurFrameIdx);
+		UpdateBlinnPhongMaterialUniformBuffer(m_uiCurFrameIdx);
+	}
 
-	//auto uiCommandBuffer = g_UI.FillCommandBuffer(m_uiCurFrameIdx);
+	RecordCommandBuffer(m_vecCommandBuffers[m_uiCurFrameIdx], m_uiCurFrameIdx);
 
 	VkSubmitInfo submitInfo{};
 	submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
@@ -3684,6 +3721,18 @@ void VulkanRenderer::LoadPlanetInfo()
 	}
 }
 
+void VulkanRenderer::InitBlinnPhongLightMaterialInfo()
+{
+	m_BlinnPhongPointLight.position = { 5.f, 10.f, 0.f };
+	m_BlinnPhongPointLight.fIntensify = 10.f;
+
+	//黄金
+	m_BlinnPhongMaterial.ambientCoefficient = { 0.24725, 0.1995, 0.0745, 1.0 };
+	m_BlinnPhongMaterial.diffuseCoefficient = { 0.75164, 0.60648, 0.22648, 1.0 };
+	m_BlinnPhongMaterial.specularCoefficient = { 0.62828, 0.5558, 0.36607, 1.0 };
+	m_BlinnPhongMaterial.fShininess = 51.2;
+}
+
 void VulkanRenderer::CreateBlinnPhongShaderModule()
 {
 	std::unordered_map<VkShaderStageFlagBits, std::filesystem::path> mapBlinnPhongShaderPath = {
@@ -3720,7 +3769,7 @@ void VulkanRenderer::CreateBlinnPhongMVPUniformBuffers()
 
 void VulkanRenderer::UpdateBlinnPhongMVPUniformBuffer(UINT uiIdx)
 {
-	m_BlinnPhongMVPUBOData.model = glm::translate(glm::mat4(1.f), {0.f, 100.f, 0.f});
+	m_BlinnPhongMVPUBOData.model = glm::translate(glm::mat4(1.f), {0.f, 10.f, 0.f});
 	m_BlinnPhongMVPUBOData.view = m_Camera.GetViewMatrix();
 	m_BlinnPhongMVPUBOData.proj = m_Camera.GetProjMatrix();
 	//OpenGL与Vulkan的差异 - Y坐标是反的
@@ -3729,9 +3778,9 @@ void VulkanRenderer::UpdateBlinnPhongMVPUniformBuffer(UINT uiIdx)
 	m_BlinnPhongMVPUBOData.mv_normal = glm::transpose(glm::inverse(m_BlinnPhongMVPUBOData.view * m_BlinnPhongMVPUBOData.model));
 
 	void* uniformBufferData;
-	vkMapMemory(m_LogicalDevice, m_vecMeshGridUniformBufferMemories[uiIdx], 0, sizeof(BlinnPhongMVPUniformBufferObject), 0, &uniformBufferData);
+	vkMapMemory(m_LogicalDevice, m_vecBlinnPhongMVPUniformBufferMemories[uiIdx], 0, sizeof(BlinnPhongMVPUniformBufferObject), 0, &uniformBufferData);
 	memcpy(uniformBufferData, &m_BlinnPhongMVPUBOData, sizeof(BlinnPhongMVPUniformBufferObject));
-	vkUnmapMemory(m_LogicalDevice, m_vecMeshGridUniformBufferMemories[uiIdx]);
+	vkUnmapMemory(m_LogicalDevice, m_vecBlinnPhongMVPUniformBufferMemories[uiIdx]);
 }
 
 void VulkanRenderer::CreateBlinnPhongLightUniformBuffers()
@@ -3753,65 +3802,336 @@ void VulkanRenderer::CreateBlinnPhongLightUniformBuffers()
 void VulkanRenderer::UpdateBlinnPhongLightUniformBuffer(UINT uiIdx)
 {
 	m_BlinnPhongLightUBOData.position = m_BlinnPhongPointLight.position;
-	m_BlinnPhongLightUBOData.ambient = m_BlinnPhongPointLight.GetAmbient();
-	m_BlinnPhongLightUBOData.diffuse = m_BlinnPhongPointLight.GetDiffuse();
-	m_BlinnPhongLightUBOData.specular = m_BlinnPhongPointLight.GetSpecular();
+	m_BlinnPhongLightUBOData.ambient = m_BlinnPhongPointLight.ambient;
+	m_BlinnPhongLightUBOData.diffuse = m_BlinnPhongPointLight.diffuse;
+	m_BlinnPhongLightUBOData.specular = m_BlinnPhongPointLight.specular;
+	m_BlinnPhongLightUBOData.intensify = m_BlinnPhongPointLight.fIntensify;
 
+	m_BlinnPhongLightUBOData.constant = m_BlinnPhongPointLight.fConstantAttenuation;
+	m_BlinnPhongLightUBOData.linear = m_BlinnPhongPointLight.fLinearAttenuation;
+	m_BlinnPhongLightUBOData.quadratic = m_BlinnPhongPointLight.fQuadraticAttenuation;
 
 	void* uniformBufferData;
-	vkMapMemory(m_LogicalDevice, m_vecMeshGridUniformBufferMemories[uiIdx], 0, sizeof(BlinnPhongLightUniformBufferObject), 0, &uniformBufferData);
+	vkMapMemory(m_LogicalDevice, m_vecBlinnPhongLightUniformBufferMemories[uiIdx], 0, sizeof(BlinnPhongLightUniformBufferObject), 0, &uniformBufferData);
 	memcpy(uniformBufferData, &m_BlinnPhongLightUBOData, sizeof(BlinnPhongLightUniformBufferObject));
 	vkUnmapMemory(m_LogicalDevice, m_vecBlinnPhongLightUniformBufferMemories[uiIdx]);
 }
 
 void VulkanRenderer::CreateBlinnPhongMaterialUniformBuffers()
 {
-	m_vecBlinnPhongLightUniformBuffers.resize(m_vecSwapChainImages.size());
-	m_vecBlinnPhongLightUniformBufferMemories.resize(m_vecSwapChainImages.size());
+	m_vecBlinnPhongMaterialUniformBuffers.resize(m_vecSwapChainImages.size());
+	m_vecBlinnPhongMaterialUniformBufferMemories.resize(m_vecSwapChainImages.size());
 
 	for (size_t i = 0; i < m_vecSwapChainImages.size(); ++i)
 	{
-		CreateBufferAndBindMemory(sizeof(BlinnPhongLightUniformBufferObject),
+		CreateBufferAndBindMemory(sizeof(BlinnPhongMaterialUniformBufferObject),
 			VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
 			VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-			m_vecBlinnPhongLightUniformBuffers[i],
-			m_vecBlinnPhongLightUniformBufferMemories[i]
+			m_vecBlinnPhongMaterialUniformBuffers[i],
+			m_vecBlinnPhongMaterialUniformBufferMemories[i]
 		);
 	}
 }
 
 void VulkanRenderer::UpdateBlinnPhongMaterialUniformBuffer(UINT uiIdx)
 {
-	m_BlinnPhongMVPUBOData.model = glm::translate(glm::mat4(1.f), { 0.f, 100.f, 0.f });
-	m_BlinnPhongMVPUBOData.view = m_Camera.GetViewMatrix();
-	m_BlinnPhongMVPUBOData.proj = m_Camera.GetProjMatrix();
-	//OpenGL与Vulkan的差异 - Y坐标是反的
-	m_BlinnPhongMVPUBOData.proj[1][1] *= -1.f;
-
-	m_BlinnPhongMVPUBOData.mv_normal = glm::transpose(glm::inverse(m_BlinnPhongMVPUBOData.view * m_BlinnPhongMVPUBOData.model));
+	m_BlinnPhongMaterialUBOData.ambient = m_BlinnPhongMaterial.ambientCoefficient;
+	m_BlinnPhongMaterialUBOData.diffuse = m_BlinnPhongMaterial.ambientCoefficient;
+	m_BlinnPhongMaterialUBOData.specular = m_BlinnPhongMaterial.specularCoefficient;
+	m_BlinnPhongMaterialUBOData.shininess = m_BlinnPhongMaterial.fShininess;
 
 	void* uniformBufferData;
-	vkMapMemory(m_LogicalDevice, m_vecMeshGridUniformBufferMemories[uiIdx], 0, sizeof(BlinnPhongMVPUniformBufferObject), 0, &uniformBufferData);
-	memcpy(uniformBufferData, &m_BlinnPhongMVPUBOData, sizeof(BlinnPhongMVPUniformBufferObject));
-	vkUnmapMemory(m_LogicalDevice, m_vecMeshGridUniformBufferMemories[uiIdx]);
+	vkMapMemory(m_LogicalDevice, m_vecBlinnPhongMaterialUniformBufferMemories[uiIdx], 0, sizeof(BlinnPhongMaterialUniformBufferObject), 0, &uniformBufferData);
+	memcpy(uniformBufferData, &m_BlinnPhongMaterialUBOData, sizeof(BlinnPhongMaterialUniformBufferObject));
+	vkUnmapMemory(m_LogicalDevice, m_vecBlinnPhongMaterialUniformBufferMemories[uiIdx]);
 }
 
 void VulkanRenderer::CreateBlinnPhongDescriptorSetLayout()
 {
+	//MVP UBO Binding
+	VkDescriptorSetLayoutBinding MVPUBOLayoutBinding{};
+	MVPUBOLayoutBinding.binding = 0;
+	MVPUBOLayoutBinding.descriptorCount = 1;
+	MVPUBOLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+	MVPUBOLayoutBinding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+	MVPUBOLayoutBinding.pImmutableSamplers = nullptr;
+
+	//Light UBO Binding
+	VkDescriptorSetLayoutBinding LightUBOLayoutBinding{};
+	LightUBOLayoutBinding.binding = 1;
+	LightUBOLayoutBinding.descriptorCount = 1;
+	LightUBOLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+	LightUBOLayoutBinding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+	LightUBOLayoutBinding.pImmutableSamplers = nullptr;
+
+	//Material UBO Binding
+	VkDescriptorSetLayoutBinding MaterialUBOLayoutBinding{};
+	MaterialUBOLayoutBinding.binding = 2;
+	MaterialUBOLayoutBinding.descriptorCount = 1;
+	MaterialUBOLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+	MaterialUBOLayoutBinding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+	MaterialUBOLayoutBinding.pImmutableSamplers = nullptr;
+
+	std::vector<VkDescriptorSetLayoutBinding> vecDescriptorLayoutBinding = {
+		MVPUBOLayoutBinding,
+		LightUBOLayoutBinding,
+		MaterialUBOLayoutBinding
+	};
+
+	VkDescriptorSetLayoutCreateInfo createInfo{};
+	createInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+	createInfo.bindingCount = static_cast<UINT>(vecDescriptorLayoutBinding.size());
+	createInfo.pBindings = vecDescriptorLayoutBinding.data();
+
+	VULKAN_ASSERT(vkCreateDescriptorSetLayout(m_LogicalDevice, &createInfo, nullptr, &m_BlinnPhongDescriptorSetLayout), "Create BlinnPhong descriptor layout failed");
 }
 
 void VulkanRenderer::CreateBlinnPhongDescriptorPool()
 {
+	VkDescriptorPoolSize MVPUBOPoolSize{};
+	MVPUBOPoolSize.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+	MVPUBOPoolSize.descriptorCount = static_cast<UINT>(m_vecSwapChainImages.size());
+
+	VkDescriptorPoolSize lightUBOPoolSize{};
+	lightUBOPoolSize.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+	lightUBOPoolSize.descriptorCount = static_cast<UINT>(m_vecSwapChainImages.size());
+
+	VkDescriptorPoolSize materialUBOPoolSize{};
+	materialUBOPoolSize.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+	materialUBOPoolSize.descriptorCount = static_cast<UINT>(m_vecSwapChainImages.size());
+
+	std::vector<VkDescriptorPoolSize> vecPoolSize = {
+		MVPUBOPoolSize,
+		lightUBOPoolSize,
+		materialUBOPoolSize
+	};
+
+	VkDescriptorPoolCreateInfo poolCreateInfo{};
+	poolCreateInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+	poolCreateInfo.poolSizeCount = static_cast<UINT>(vecPoolSize.size());
+	poolCreateInfo.pPoolSizes = vecPoolSize.data();
+	poolCreateInfo.maxSets = static_cast<UINT>(m_vecSwapChainImages.size());
+
+	VULKAN_ASSERT(vkCreateDescriptorPool(m_LogicalDevice, &poolCreateInfo, nullptr, &m_BlinnPhongDescriptorPool), "Create BlinnPhong descriptor pool failed");
 }
 
 void VulkanRenderer::CreateBlinnPhongDescriptorSets()
 {
+	VkDescriptorSetAllocateInfo allocInfo{};
+	allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+	allocInfo.descriptorSetCount = static_cast<UINT>(m_vecSwapChainImages.size());
+	allocInfo.descriptorPool = m_BlinnPhongDescriptorPool;
+
+	std::vector<VkDescriptorSetLayout> vecDupDescriptorSetLayout(m_vecSwapChainImages.size(), m_BlinnPhongDescriptorSetLayout);
+	allocInfo.pSetLayouts = vecDupDescriptorSetLayout.data();
+
+	m_vecBlinnPhongDescriptorSets.resize(m_vecSwapChainImages.size());
+	VULKAN_ASSERT(vkAllocateDescriptorSets(m_LogicalDevice, &allocInfo, m_vecBlinnPhongDescriptorSets.data()), "Allocate BlinnPhong desctiprot sets failed");
+
+	for (size_t i = 0; i < m_vecSwapChainImages.size(); ++i)
+	{
+		VkDescriptorBufferInfo MVPDescriptorBufferInfo{};
+		MVPDescriptorBufferInfo.buffer = m_vecBlinnPhongMVPUniformBuffers[i];
+		MVPDescriptorBufferInfo.offset = 0;
+		MVPDescriptorBufferInfo.range = sizeof(BlinnPhongMVPUniformBufferObject);
+
+		VkDescriptorBufferInfo lightDscriptorBufferInfo{};
+		lightDscriptorBufferInfo.buffer = m_vecBlinnPhongLightUniformBuffers[i];
+		lightDscriptorBufferInfo.offset = 0;
+		lightDscriptorBufferInfo.range = sizeof(BlinnPhongLightUniformBufferObject);
+
+		VkDescriptorBufferInfo materialDescriptorBufferInfo{};
+		materialDescriptorBufferInfo.buffer = m_vecBlinnPhongMaterialUniformBuffers[i];
+		materialDescriptorBufferInfo.offset = 0;
+		materialDescriptorBufferInfo.range = sizeof(BlinnPhongMaterialUniformBufferObject);
+
+		VkWriteDescriptorSet MVPUBOWrite{};
+		MVPUBOWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+		MVPUBOWrite.dstSet = m_vecBlinnPhongDescriptorSets[i];
+		MVPUBOWrite.dstBinding = 0;
+		MVPUBOWrite.dstArrayElement = 0;
+		MVPUBOWrite.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+		MVPUBOWrite.descriptorCount = 1;
+		MVPUBOWrite.pBufferInfo = &MVPDescriptorBufferInfo;
+
+		VkWriteDescriptorSet lightUBOWrite{};
+		lightUBOWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+		lightUBOWrite.dstSet = m_vecBlinnPhongDescriptorSets[i];
+		lightUBOWrite.dstBinding = 1;
+		lightUBOWrite.dstArrayElement = 0;
+		lightUBOWrite.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+		lightUBOWrite.descriptorCount = 1;
+		lightUBOWrite.pBufferInfo = &lightDscriptorBufferInfo;
+
+		VkWriteDescriptorSet materialUBOWrite{};
+		materialUBOWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+		materialUBOWrite.dstSet = m_vecBlinnPhongDescriptorSets[i];
+		materialUBOWrite.dstBinding = 2;
+		materialUBOWrite.dstArrayElement = 0;
+		materialUBOWrite.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+		materialUBOWrite.descriptorCount = 1;
+		materialUBOWrite.pBufferInfo = &materialDescriptorBufferInfo;
+
+		std::vector<VkWriteDescriptorSet> vecDescriptorWrite = {
+			MVPUBOWrite,
+			lightUBOWrite,
+			materialUBOWrite
+		};
+
+		vkUpdateDescriptorSets(m_LogicalDevice, static_cast<UINT>(vecDescriptorWrite.size()), vecDescriptorWrite.data(), 0, nullptr);
+	}
 }
 
 void VulkanRenderer::CreateBlinnPhongGraphicPipelineLayout()
 {
+	VkPipelineLayoutCreateInfo pipelineLayoutCreateInfo{};
+	pipelineLayoutCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+	pipelineLayoutCreateInfo.setLayoutCount = 1;
+	pipelineLayoutCreateInfo.pSetLayouts = &m_BlinnPhongDescriptorSetLayout;
+	pipelineLayoutCreateInfo.pushConstantRangeCount = 0;
+	pipelineLayoutCreateInfo.pPushConstantRanges = nullptr;
+
+	VULKAN_ASSERT(vkCreatePipelineLayout(m_LogicalDevice, &pipelineLayoutCreateInfo, nullptr, &m_BlinnPhongGraphicPipelineLayout), "Create BlinnPhong pipeline layout failed");
 }
 
 void VulkanRenderer::CreateBlinnPhongGraphicPipeline()
 {
+	/****************************可编程管线*******************************/
+	VkPipelineShaderStageCreateInfo vertShaderStageCreateInfo{};
+	vertShaderStageCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+	vertShaderStageCreateInfo.stage = VK_SHADER_STAGE_VERTEX_BIT;
+	vertShaderStageCreateInfo.module = m_mapBlinnPhongShaderModule.at(VK_SHADER_STAGE_VERTEX_BIT); //Bytecode
+	vertShaderStageCreateInfo.pName = "main"; //要invoke的函数
+
+	VkPipelineShaderStageCreateInfo fragShaderStageCreateInfo{};
+	fragShaderStageCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+	fragShaderStageCreateInfo.stage = VK_SHADER_STAGE_FRAGMENT_BIT;
+	fragShaderStageCreateInfo.module = m_mapBlinnPhongShaderModule.at(VK_SHADER_STAGE_FRAGMENT_BIT); //Bytecode
+	fragShaderStageCreateInfo.pName = "main"; //要invoke的函数
+
+	VkPipelineShaderStageCreateInfo shaderStageCreateInfos[] = {
+		vertShaderStageCreateInfo,
+		fragShaderStageCreateInfo,
+	};
+
+	/*****************************固定管线*******************************/
+
+	//-----------------------Dynamic State--------------------------//
+	VkPipelineDynamicStateCreateInfo dynamicStateCreateInfo{};
+	dynamicStateCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO;
+	std::vector<VkDynamicState> vecDynamicStates = {
+		VK_DYNAMIC_STATE_VIEWPORT,
+		VK_DYNAMIC_STATE_SCISSOR,
+	};
+	dynamicStateCreateInfo.dynamicStateCount = static_cast<UINT>(vecDynamicStates.size());
+	dynamicStateCreateInfo.pDynamicStates = vecDynamicStates.data();
+
+	//-----------------------Vertex Input State--------------------------//
+	auto bindingDescription = Vertex3D::GetBindingDescription();
+	auto attributeDescriptions = Vertex3D::GetAttributeDescriptions();
+	VkPipelineVertexInputStateCreateInfo vertexInputCreateInfo{};
+	vertexInputCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
+	vertexInputCreateInfo.vertexBindingDescriptionCount = 1;
+	vertexInputCreateInfo.pVertexBindingDescriptions = &bindingDescription;
+	vertexInputCreateInfo.vertexAttributeDescriptionCount = static_cast<UINT>(attributeDescriptions.size());
+	vertexInputCreateInfo.pVertexAttributeDescriptions = attributeDescriptions.data();
+
+	//-----------------------Input Assembly State------------------------//
+	VkPipelineInputAssemblyStateCreateInfo inputAssemblyCreateInfo{};
+	inputAssemblyCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
+	inputAssemblyCreateInfo.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+	inputAssemblyCreateInfo.primitiveRestartEnable = VK_FALSE;
+
+
+	//-----------------------Viewport State--------------------------//
+	VkPipelineViewportStateCreateInfo viewportStateCreateInfo{};
+	viewportStateCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
+	viewportStateCreateInfo.viewportCount = 1;
+	viewportStateCreateInfo.scissorCount = 1;
+
+	//-----------------------Raserization State--------------------------//
+	VkPipelineRasterizationStateCreateInfo rasterizationStateCreateInfo{};
+	rasterizationStateCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
+	rasterizationStateCreateInfo.depthClampEnable = VK_FALSE;	//开启后，超过远近平面的部分会被截断在远近平面上，而不是丢弃
+	rasterizationStateCreateInfo.rasterizerDiscardEnable = VK_FALSE;	//开启后，禁止所有图元经过光栅化器
+	rasterizationStateCreateInfo.polygonMode = VK_POLYGON_MODE_FILL;	//图元模式，可以是FILL、LINE、POINT
+	rasterizationStateCreateInfo.lineWidth = 1.f;	//指定光栅化后的线段宽度
+	rasterizationStateCreateInfo.cullMode = VK_CULL_MODE_NONE;
+	rasterizationStateCreateInfo.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE; //顶点序，可以是顺时针cw或逆时针ccw
+	rasterizationStateCreateInfo.depthBiasEnable = VK_FALSE; //深度偏移，一般用于Shaodw Map中避免阴影痤疮
+	rasterizationStateCreateInfo.depthBiasConstantFactor = 0.f;
+	rasterizationStateCreateInfo.depthBiasClamp = 0.f;
+	rasterizationStateCreateInfo.depthBiasSlopeFactor = 0.f;
+
+	//-----------------------Multisample State--------------------------//
+	VkPipelineMultisampleStateCreateInfo multisamplingStateCreateInfo{};
+	multisamplingStateCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
+	multisamplingStateCreateInfo.sampleShadingEnable = VK_FALSE;
+	multisamplingStateCreateInfo.minSampleShading = 0.8f;
+	multisamplingStateCreateInfo.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
+	multisamplingStateCreateInfo.minSampleShading = 1.f;
+	multisamplingStateCreateInfo.pSampleMask = nullptr;
+	multisamplingStateCreateInfo.alphaToCoverageEnable = VK_FALSE;
+	multisamplingStateCreateInfo.alphaToOneEnable = VK_FALSE;
+
+	//-----------------------Depth Stencil State--------------------------//
+	VkPipelineDepthStencilStateCreateInfo depthStencilStateCreateInfo{};
+	depthStencilStateCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
+	depthStencilStateCreateInfo.depthTestEnable = VK_TRUE; //作为背景，始终在最远处，不进行深度检测
+	depthStencilStateCreateInfo.depthWriteEnable = VK_TRUE;
+	depthStencilStateCreateInfo.depthCompareOp = VK_COMPARE_OP_LESS_OR_EQUAL;
+	depthStencilStateCreateInfo.depthBoundsTestEnable = VK_FALSE;
+	depthStencilStateCreateInfo.minDepthBounds = 0.f;
+	depthStencilStateCreateInfo.maxDepthBounds = 1.f;
+	depthStencilStateCreateInfo.stencilTestEnable = VK_FALSE;
+	depthStencilStateCreateInfo.front = {};
+	depthStencilStateCreateInfo.back = {};
+
+	//-----------------------Color Blend State--------------------------//
+	VkPipelineColorBlendStateCreateInfo colorBlendStateCreateInfo{};
+	colorBlendStateCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
+	colorBlendStateCreateInfo.logicOpEnable = VK_FALSE;
+	colorBlendStateCreateInfo.logicOp = VK_LOGIC_OP_COPY;
+	colorBlendStateCreateInfo.attachmentCount = 1;
+
+	VkPipelineColorBlendAttachmentState colorBlendAttachment{};
+	colorBlendAttachment.colorWriteMask =
+		VK_COLOR_COMPONENT_R_BIT
+		| VK_COLOR_COMPONENT_G_BIT
+		| VK_COLOR_COMPONENT_B_BIT
+		| VK_COLOR_COMPONENT_A_BIT;
+	colorBlendAttachment.blendEnable = VK_FALSE;
+	colorBlendAttachment.srcColorBlendFactor = VK_BLEND_FACTOR_ONE;
+	colorBlendAttachment.dstColorBlendFactor = VK_BLEND_FACTOR_ZERO;
+	colorBlendAttachment.colorBlendOp = VK_BLEND_OP_ADD;
+	colorBlendAttachment.srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
+	colorBlendAttachment.dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO;
+	colorBlendAttachment.alphaBlendOp = VK_BLEND_OP_ADD;
+
+	colorBlendStateCreateInfo.pAttachments = &colorBlendAttachment;
+	colorBlendStateCreateInfo.blendConstants[0] = 0.f;
+	colorBlendStateCreateInfo.blendConstants[1] = 0.f;
+	colorBlendStateCreateInfo.blendConstants[2] = 0.f;
+	colorBlendStateCreateInfo.blendConstants[3] = 0.f;
+
+	/***********************************************************************/
+	VkGraphicsPipelineCreateInfo pipelineCreateInfo{};
+	pipelineCreateInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
+	pipelineCreateInfo.stageCount = static_cast<UINT>(m_mapBlinnPhongShaderModule.size());
+	pipelineCreateInfo.pStages = shaderStageCreateInfos;
+	pipelineCreateInfo.pDynamicState = &dynamicStateCreateInfo;
+	pipelineCreateInfo.pVertexInputState = &vertexInputCreateInfo;
+	pipelineCreateInfo.pInputAssemblyState = &inputAssemblyCreateInfo;
+	pipelineCreateInfo.pViewportState = &viewportStateCreateInfo;
+	pipelineCreateInfo.pRasterizationState = &rasterizationStateCreateInfo;
+	pipelineCreateInfo.pMultisampleState = &multisamplingStateCreateInfo;
+	pipelineCreateInfo.pDepthStencilState = &depthStencilStateCreateInfo;
+	pipelineCreateInfo.pColorBlendState = &colorBlendStateCreateInfo;
+	pipelineCreateInfo.layout = m_BlinnPhongGraphicPipelineLayout;
+	pipelineCreateInfo.renderPass = m_RenderPass;
+	pipelineCreateInfo.subpass = 0;
+	pipelineCreateInfo.basePipelineHandle = VK_NULL_HANDLE;
+	pipelineCreateInfo.basePipelineIndex = -1;
+
+	VULKAN_ASSERT(vkCreateGraphicsPipelines(m_LogicalDevice, VK_NULL_HANDLE, 1, &pipelineCreateInfo, nullptr, &m_BlinnPhongGraphicPipeline), "Create BlinnPhong graphic pipeline failed");
 }
