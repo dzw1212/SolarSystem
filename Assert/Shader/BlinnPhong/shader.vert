@@ -15,23 +15,22 @@ layout (binding = 0) uniform MVPUniformBufferObject
 
 layout (binding = 1) uniform LightUniformBufferObject
 {
-	vec3 position;
-	vec4 ambient;
-	vec4 diffuse;
-	vec4 specular;
-
     float intensify;
     float constant;
     float linear;
     float quadratic;
+	vec3 position;
+	vec4 ambient;
+	vec4 diffuse;
+	vec4 specular;
 } lightUBO;
 
 layout (binding = 2) uniform MaterialUniformBufferObject
 {
+	float shininess;
 	vec4 ambient;
 	vec4 diffuse;
 	vec4 specular;
-	float shininess;
 }  materialUBO;
 
 void main()
@@ -44,8 +43,7 @@ void main()
 	vec3 Half = normalize(View + Light);
 
     float lightDistance = distance(Pos, LightPos);
-    float attenuationIntensify = lightUBO.intensify / (lightUBO.constant + 
-        lightUBO.linear * lightDistance + lightUBO.quadratic * lightDistance * lightDistance);
+    float attenuationIntensify = lightUBO.intensify / (lightUBO.constant + lightUBO.linear * lightDistance + lightUBO.quadratic * lightDistance * lightDistance);
 
 	vec4 ambient = lightUBO.ambient * attenuationIntensify * materialUBO.ambient;
 	vec4 diffuse = lightUBO.diffuse * attenuationIntensify * materialUBO.diffuse * max(0.0, dot(Normal, Light));

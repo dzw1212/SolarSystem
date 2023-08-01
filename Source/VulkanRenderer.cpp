@@ -3805,10 +3805,11 @@ void VulkanRenderer::UpdateBlinnPhongLightUniformBuffer(UINT uiIdx)
 	m_BlinnPhongLightUBOData.ambient = m_BlinnPhongPointLight.ambient;
 	m_BlinnPhongLightUBOData.diffuse = m_BlinnPhongPointLight.diffuse;
 	m_BlinnPhongLightUBOData.specular = m_BlinnPhongPointLight.specular;
+
 	m_BlinnPhongLightUBOData.intensify = m_BlinnPhongPointLight.fIntensify;
 
 	m_BlinnPhongLightUBOData.constant = m_BlinnPhongPointLight.fConstantAttenuation;
-	m_BlinnPhongLightUBOData.linear = m_BlinnPhongPointLight.fLinearAttenuation;
+	m_BlinnPhongLightUBOData.linear = 1.f;//m_BlinnPhongPointLight.fLinearAttenuation;
 	m_BlinnPhongLightUBOData.quadratic = m_BlinnPhongPointLight.fQuadraticAttenuation;
 
 	void* uniformBufferData;

@@ -95,7 +95,7 @@ namespace DZW_LightWrap
 		glm::vec4 specular = glm::vec4(1.f);
 
 		//attenuation
-		//1 / (const + linear * d + quad * d^2)
+		//1.0 / (const + linear * d + quad * d^2)
 		float fConstantAttenuation = 1.f;
 		float fLinearAttenuation = 0.f;
 		float fQuadraticAttenuation = 0.f;
