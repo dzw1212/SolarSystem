@@ -138,15 +138,28 @@ void UI::Draw()
     if (ImGui::SliderFloat("Texture Lod", &fLod, 0.f, static_cast<float>(m_pRenderer->GetTextureMaxLod()), "%.1f"))
         m_pRenderer->SetTextureLod(fLod);
 
-    ImGui::CollapsingHeader("Skybox", ImGuiTreeNodeFlags_CollapsingHeader);
-    ImGui::Checkbox("Enable", m_pRenderer->GetSkyboxEnable());
-    ImGui::DragFloat("Rotate Speed", m_pRenderer->GetSkyboxRotateSpeed(), 0.01f, 1.f, 10.f, "%.1f");
+    if (ImGui::CollapsingHeader("Skybox"))
+    {
+        ImGui::Checkbox("Enable", m_pRenderer->GetSkyboxEnable());
+        ImGui::DragFloat("Rotate Speed", m_pRenderer->GetSkyboxRotateSpeed(), 0.01f, 1.f, 10.f, "%.1f");
+    }
 
-    ImGui::CollapsingHeader("Mesh Grid", ImGuiTreeNodeFlags_CollapsingHeader);
-    ImGui::Checkbox("Enable", m_pRenderer->GetMeshGridEnable());
-    ImGui::DragFloat("Size", m_pRenderer->GetMeshGridSize(), 1.f, 100.f, 1000.f, "%.1f");
-    ImGui::DragFloat("Split", m_pRenderer->GetMeshGridSplit(), 1.f, 1.f, 100.f, "%.1f");
-    ImGui::DragFloat("Line Width", m_pRenderer->GetMeshGridLineWidth(), 1.f, 1.f, 20.f, "%.1f");
+    if (ImGui::CollapsingHeader("Mesh Grid"))
+    {
+        ImGui::Checkbox("Enable", m_pRenderer->GetMeshGridEnable());
+        ImGui::DragFloat("Size", m_pRenderer->GetMeshGridSize(), 1.f, 100.f, 1000.f, "%.1f");
+        ImGui::DragFloat("Split", m_pRenderer->GetMeshGridSplit(), 1.f, 1.f, 100.f, "%.1f");
+        ImGui::DragFloat("Line Width", m_pRenderer->GetMeshGridLineWidth(), 1.f, 1.f, 20.f, "%.1f");
+    }
+
+    ImGui::End();
+
+    ImGui::Begin("Blinn Phong");
+    if (ImGui::CollapsingHeader("Point Light"))
+    {
+        auto pLight = m_pRenderer->GetBlinnPhongPointLight();
+        ImGui::DragFloat4("Ambient", pLight->ambient)
+    }
 
     ImGui::End();
 }

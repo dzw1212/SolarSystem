@@ -240,6 +240,29 @@ void VulkanRenderer::Clean()
 	vkDestroyBuffer(m_LogicalDevice, m_MeshGridIndexBuffer, nullptr);
 	vkFreeMemory(m_LogicalDevice, m_MeshGridIndexBufferMemory, nullptr);
 
+	//Blinn Phong
+	for (const auto& shaderModule : m_mapBlinnPhongShaderModule)
+	{
+		vkDestroyShaderModule(m_LogicalDevice, shaderModule.second, nullptr);
+	}
+	for (size_t i = 0; i < m_vecSwapChainImages.size(); ++i)
+	{
+		vkFreeMemory(m_LogicalDevice, m_vecBlinnPhongMVPUniformBufferMemories[i], nullptr);
+		vkDestroyBuffer(m_LogicalDevice, m_vecBlinnPhongMVPUniformBuffers[i], nullptr);
+
+		vkFreeMemory(m_LogicalDevice, m_vecBlinnPhongLightUniformBufferMemories[i], nullptr);
+		vkDestroyBuffer(m_LogicalDevice, m_vecBlinnPhongLightUniformBuffers[i], nullptr);
+
+		vkFreeMemory(m_LogicalDevice, m_vecBlinnPhongMaterialUniformBufferMemories[i], nullptr);
+		vkDestroyBuffer(m_LogicalDevice, m_vecBlinnPhongMaterialUniformBuffers[i], nullptr);
+	}
+
+	vkDestroyDescriptorPool(m_LogicalDevice, m_BlinnPhongDescriptorPool, nullptr);
+	vkDestroyDescriptorSetLayout(m_LogicalDevice, m_BlinnPhongDescriptorSetLayout, nullptr);
+
+	vkDestroyPipeline(m_LogicalDevice, m_BlinnPhongGraphicPipeline, nullptr);
+	vkDestroyPipelineLayout(m_LogicalDevice, m_BlinnPhongGraphicPipelineLayout, nullptr);
+
 	//----------------------------------------------------------------------------
 
 
@@ -275,6 +298,8 @@ void VulkanRenderer::Clean()
 		vkFreeMemory(m_LogicalDevice, m_vecDynamicUniformBufferMemories[i], nullptr);
 		vkDestroyBuffer(m_LogicalDevice, m_vecDynamicUniformBuffers[i], nullptr);
 	}
+
+	/********************************************************************/
 
 	for (int i = 0; i < m_vecSwapChainImages.size(); ++i)
 	{
@@ -3043,31 +3068,31 @@ void VulkanRenderer::RecordCommandBuffer(VkCommandBuffer& commandBuffer, UINT ui
 		vkCmdDrawIndexed(commandBuffer, static_cast<UINT>(m_BlinnPhongModel.m_vecIndices.size()), 1, 0, 0, 0);
 	}
 
-	vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m_GraphicPipeline);
-	VkBuffer vertexBuffers[] = {
-		m_Model.m_VertexBuffer,
-	};
-	VkDeviceSize offsets[]{ 0 };
-	vkCmdBindVertexBuffers(commandBuffer, 0, 1, vertexBuffers, offsets);
+	//vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m_GraphicPipeline);
+	//VkBuffer vertexBuffers[] = {
+	//	m_Model.m_VertexBuffer,
+	//};
+	//VkDeviceSize offsets[]{ 0 };
+	//vkCmdBindVertexBuffers(commandBuffer, 0, 1, vertexBuffers, offsets);
 
-	vkCmdBindIndexBuffer(commandBuffer, m_Model.m_IndexBuffer, 0, VK_INDEX_TYPE_UINT32);
+	//vkCmdBindIndexBuffer(commandBuffer, m_Model.m_IndexBuffer, 0, VK_INDEX_TYPE_UINT32);
 
-	for (UINT i = 0; i < INSTANCE_NUM; ++i)
-	{
-		UINT uiDynamicOffset = i * static_cast<UINT>(m_DynamicAlignment);
+	//for (UINT i = 0; i < INSTANCE_NUM; ++i)
+	//{
+	//	UINT uiDynamicOffset = i * static_cast<UINT>(m_DynamicAlignment);
 
-		vkCmdBindDescriptorSets(commandBuffer,
-			VK_PIPELINE_BIND_POINT_GRAPHICS, //descriptorSet并非Pipeline独有，因此需要指定是用于Graphic Pipeline还是Compute Pipeline
-			m_GraphicPipelineLayout, //PipelineLayout中指定了descriptorSetLayout
-			0,	//descriptorSet数组中第一个元素的下标 
-			1,	//descriptorSet数组中元素的个数
-			&m_vecDescriptorSets[uiIdx],
-			1, //启用动态Uniform偏移
-			&uiDynamicOffset	//指定动态Uniform的偏移
-		);
+	//	vkCmdBindDescriptorSets(commandBuffer,
+	//		VK_PIPELINE_BIND_POINT_GRAPHICS, //descriptorSet并非Pipeline独有，因此需要指定是用于Graphic Pipeline还是Compute Pipeline
+	//		m_GraphicPipelineLayout, //PipelineLayout中指定了descriptorSetLayout
+	//		0,	//descriptorSet数组中第一个元素的下标 
+	//		1,	//descriptorSet数组中元素的个数
+	//		&m_vecDescriptorSets[uiIdx],
+	//		1, //启用动态Uniform偏移
+	//		&uiDynamicOffset	//指定动态Uniform的偏移
+	//	);
 
-		vkCmdDrawIndexed(commandBuffer, static_cast<UINT>(m_Model.m_vecIndices.size()), 1, 0, 0, 0);
-	}
+	//	vkCmdDrawIndexed(commandBuffer, static_cast<UINT>(m_Model.m_vecIndices.size()), 1, 0, 0, 0);
+	//}
 
 	if (ENABLE_GUI)
 		g_UI.Render(uiIdx);
@@ -3723,8 +3748,8 @@ void VulkanRenderer::LoadPlanetInfo()
 
 void VulkanRenderer::InitBlinnPhongLightMaterialInfo()
 {
-	m_BlinnPhongPointLight.position = { 5.f, 10.f, 0.f };
-	m_BlinnPhongPointLight.fIntensify = 10.f;
+	m_BlinnPhongPointLight.position = { 5.f, 0.f, 0.f };
+	m_BlinnPhongPointLight.fIntensify = 1.f;
 
 	//黄金
 	m_BlinnPhongMaterial.ambientCoefficient = { 0.24725, 0.1995, 0.0745, 1.0 };
@@ -3769,7 +3794,7 @@ void VulkanRenderer::CreateBlinnPhongMVPUniformBuffers()
 
 void VulkanRenderer::UpdateBlinnPhongMVPUniformBuffer(UINT uiIdx)
 {
-	m_BlinnPhongMVPUBOData.model = glm::translate(glm::mat4(1.f), {0.f, 10.f, 0.f});
+	m_BlinnPhongMVPUBOData.model = glm::translate(glm::mat4(1.f), {0.f, 0.f, 0.f});
 	m_BlinnPhongMVPUBOData.view = m_Camera.GetViewMatrix();
 	m_BlinnPhongMVPUBOData.proj = m_Camera.GetProjMatrix();
 	//OpenGL与Vulkan的差异 - Y坐标是反的
@@ -3809,7 +3834,7 @@ void VulkanRenderer::UpdateBlinnPhongLightUniformBuffer(UINT uiIdx)
 	m_BlinnPhongLightUBOData.intensify = m_BlinnPhongPointLight.fIntensify;
 
 	m_BlinnPhongLightUBOData.constant = m_BlinnPhongPointLight.fConstantAttenuation;
-	m_BlinnPhongLightUBOData.linear = 1.f;//m_BlinnPhongPointLight.fLinearAttenuation;
+	m_BlinnPhongLightUBOData.linear = m_BlinnPhongPointLight.fLinearAttenuation;
 	m_BlinnPhongLightUBOData.quadratic = m_BlinnPhongPointLight.fQuadraticAttenuation;
 
 	void* uniformBufferData;
