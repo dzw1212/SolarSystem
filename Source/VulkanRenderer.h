@@ -283,6 +283,8 @@ public:
 	float* GetMeshGridSplit() { return &m_fMeshGridSplit; }
 	float* GetMeshGridLineWidth() { return &m_fMeshGridLineWidth; }
 
+	DZW_LightWrap::BlinnPhongPointLight* GetBlinnPhongPointLight() { return &m_BlinnPhongPointLight; }
+
 public:
 	struct SkyboxUniformBufferObject
 	{

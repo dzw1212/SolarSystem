@@ -151,16 +151,14 @@ void UI::Draw()
         ImGui::DragFloat("Split", m_pRenderer->GetMeshGridSplit(), 1.f, 1.f, 100.f, "%.1f");
         ImGui::DragFloat("Line Width", m_pRenderer->GetMeshGridLineWidth(), 1.f, 1.f, 20.f, "%.1f");
     }
-
     ImGui::End();
 
     ImGui::Begin("Blinn Phong");
     if (ImGui::CollapsingHeader("Point Light"))
     {
         auto pLight = m_pRenderer->GetBlinnPhongPointLight();
-        ImGui::DragFloat4("Ambient", pLight->ambient)
+        ImGui::ColorPicker4("Ambient", (float*)&(pLight->ambient), ImGuiColorEditFlags_NoOptions | ImGuiColorEditFlags_NoInputs);
     }
-
     ImGui::End();
 }
 
