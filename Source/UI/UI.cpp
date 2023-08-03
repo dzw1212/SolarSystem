@@ -138,13 +138,13 @@ void UI::Draw()
     if (ImGui::SliderFloat("Texture Lod", &fLod, 0.f, static_cast<float>(m_pRenderer->GetTextureMaxLod()), "%.1f"))
         m_pRenderer->SetTextureLod(fLod);
 
-    if (ImGui::CollapsingHeader("Skybox"))
+    if (ImGui::CollapsingHeader("Skybox", ImGuiTreeNodeFlags_DefaultOpen))
     {
         ImGui::Checkbox("Enable", m_pRenderer->GetSkyboxEnable());
         ImGui::DragFloat("Rotate Speed", m_pRenderer->GetSkyboxRotateSpeed(), 0.01f, 1.f, 10.f, "%.1f");
     }
 
-    if (ImGui::CollapsingHeader("Mesh Grid"))
+    if (ImGui::CollapsingHeader("Mesh Grid", ImGuiTreeNodeFlags_DefaultOpen))
     {
         ImGui::Checkbox("Enable", m_pRenderer->GetMeshGridEnable());
         ImGui::DragFloat("Size", m_pRenderer->GetMeshGridSize(), 1.f, 100.f, 1000.f, "%.1f");
@@ -154,11 +154,20 @@ void UI::Draw()
     ImGui::End();
 
     ImGui::Begin("Blinn Phong");
-    if (ImGui::CollapsingHeader("Point Light"))
+    if (ImGui::CollapsingHeader("Point Light", ImGuiTreeNodeFlags_DefaultOpen))
     {
         auto pLight = m_pRenderer->GetBlinnPhongPointLight();
+        ImGui::SeparatorText("Color");
         ImGui::ColorPicker4("Ambient", (float*)&(pLight->ambient), ImGuiColorEditFlags_NoOptions | ImGuiColorEditFlags_NoInputs);
+        ImGui::ColorPicker4("Diffuse", (float*)&(pLight->diffuse), ImGuiColorEditFlags_NoOptions | ImGuiColorEditFlags_NoInputs);
+        ImGui::ColorPicker4("Specular", (float*)&(pLight->specular), ImGuiColorEditFlags_NoOptions | ImGuiColorEditFlags_NoInputs);
+        
+        ImGui::SeparatorText("Attenuation");
+
     }
+
+    ImGui::ShowDemoWindow();
+
     ImGui::End();
 }
 

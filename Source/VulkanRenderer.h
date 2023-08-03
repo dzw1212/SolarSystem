@@ -403,6 +403,8 @@ public:
 private:
 	UINT m_uiWindowWidth;
 	UINT m_uiWindowHeight;
+	UINT m_uiPrimaryMonitorWidth;
+	UINT m_uiPrimaryMonitorHeight;
 	std::string m_strWindowTitle;
 	bool m_bFrameBufferResized;
 	

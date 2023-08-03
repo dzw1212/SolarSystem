@@ -46,8 +46,6 @@ VulkanRenderer::VulkanRenderer()
 	m_bEnableValidationLayer = true;
 #endif
 
-	m_uiWindowWidth = 2560;
-	m_uiWindowHeight = 1440;
 	m_strWindowTitle = "Vulkan Renderer";
 
 	m_bFrameBufferResized = false;
@@ -189,18 +187,13 @@ void VulkanRenderer::Loop()
 
 void VulkanRenderer::Clean()
 {
-	_aligned_free(m_DynamicUboData.model);
-
 	if (ENABLE_GUI)
 		g_UI.Clean();
 
-	FreeTexture(m_Texture);
-	FreeModel(m_Model);
-
+	//Skybox
 	FreeTexture(m_SkyboxTexture);
 	FreeModel(m_SkyboxModel);
 
-	//Skybox
 	vkDestroyDescriptorPool(m_LogicalDevice, m_SkyboxDescriptorPool, nullptr);
 	vkDestroyDescriptorSetLayout(m_LogicalDevice, m_SkyboxDescriptorSetLayout, nullptr);
 	for (size_t i = 0; i < m_vecSwapChainImages.size(); ++i)
@@ -241,6 +234,8 @@ void VulkanRenderer::Clean()
 	vkFreeMemory(m_LogicalDevice, m_MeshGridIndexBufferMemory, nullptr);
 
 	//Blinn Phong
+	FreeModel(m_BlinnPhongModel);
+
 	for (const auto& shaderModule : m_mapBlinnPhongShaderModule)
 	{
 		vkDestroyShaderModule(m_LogicalDevice, shaderModule.second, nullptr);
@@ -264,7 +259,10 @@ void VulkanRenderer::Clean()
 	vkDestroyPipelineLayout(m_LogicalDevice, m_BlinnPhongGraphicPipelineLayout, nullptr);
 
 	//----------------------------------------------------------------------------
+	_aligned_free(m_DynamicUboData.model);
 
+	FreeTexture(m_Texture);
+	FreeModel(m_Model);
 
 	for (const auto& shaderModule : m_mapShaderModule)
 	{
@@ -356,6 +354,14 @@ void VulkanRenderer::InitWindow()
 
 	glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
 	glfwWindowHint(GLFW_RESIZABLE, GLFW_TRUE);
+
+	const GLFWvidmode* mode = glfwGetVideoMode(glfwGetPrimaryMonitor());
+
+	m_uiPrimaryMonitorWidth = mode->width;
+	m_uiPrimaryMonitorHeight = mode->height;
+
+	m_uiWindowWidth = m_uiPrimaryMonitorWidth * 0.8;
+	m_uiWindowHeight = m_uiPrimaryMonitorHeight * 0.8;
 
 	m_pWindow = glfwCreateWindow(m_uiWindowWidth, m_uiWindowHeight, m_strWindowTitle.c_str(), nullptr, nullptr);
 	glfwMakeContextCurrent(m_pWindow);
