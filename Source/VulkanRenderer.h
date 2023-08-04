@@ -284,7 +284,7 @@ public:
 	float* GetMeshGridLineWidth() { return &m_fMeshGridLineWidth; }
 
 	DZW_LightWrap::BlinnPhongPointLight* GetBlinnPhongPointLight() { return &m_BlinnPhongPointLight; }
-
+	DZW_MaterialWrap::BlinnPhongMaterial* GetBlinnPhongMaterial() { return &m_BlinnPhongMaterial; }
 public:
 	struct SkyboxUniformBufferObject
 	{
@@ -358,25 +358,24 @@ public:
 
 	struct BlinnPhongLightUniformBufferObject
 	{
-		float intensify;
+		alignas(16) glm::vec3 position;
+		alignas(16) glm::vec4 ambient;
+		alignas(16) glm::vec4 diffuse;
+		alignas(16) glm::vec4 specular;
 
+		alignas(4) float intensify;
 		//Attenuation
-		float constant;
-		float linear;
-		float quadratic;
-
-		glm::vec3 position;
-		glm::vec4 ambient;
-		glm::vec4 diffuse;
-		glm::vec4 specular;
+		alignas(4) float constant;
+		alignas(4) float linear;
+		alignas(4) float quadratic;
 	};
 
 	struct BlinnPhongMaterialUniformBufferObject
 	{
-		float shininess;
-		glm::vec4 ambient;
-		glm::vec4 diffuse;
-		glm::vec4 specular;
+		alignas(16) glm::vec4 ambient;
+		alignas(16) glm::vec4 diffuse;
+		alignas(16) glm::vec4 specular;
+		alignas(4)  float shininess;
 	};
 
 	void InitBlinnPhongLightMaterialInfo();

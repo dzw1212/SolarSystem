@@ -3832,7 +3832,8 @@ void VulkanRenderer::CreateBlinnPhongLightUniformBuffers()
 
 void VulkanRenderer::UpdateBlinnPhongLightUniformBuffer(UINT uiIdx)
 {
-	m_BlinnPhongLightUBOData.position = m_BlinnPhongPointLight.position;
+	m_BlinnPhongLightUBOData.position = m_Camera.GetViewMatrix() * glm::vec4(m_BlinnPhongPointLight.position, 1.0); //转到视图空间
+
 	m_BlinnPhongLightUBOData.ambient = m_BlinnPhongPointLight.ambient;
 	m_BlinnPhongLightUBOData.diffuse = m_BlinnPhongPointLight.diffuse;
 	m_BlinnPhongLightUBOData.specular = m_BlinnPhongPointLight.specular;
@@ -3893,7 +3894,7 @@ void VulkanRenderer::CreateBlinnPhongDescriptorSetLayout()
 	LightUBOLayoutBinding.binding = 1;
 	LightUBOLayoutBinding.descriptorCount = 1;
 	LightUBOLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-	LightUBOLayoutBinding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+	LightUBOLayoutBinding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
 	LightUBOLayoutBinding.pImmutableSamplers = nullptr;
 
 	//Material UBO Binding
@@ -3901,7 +3902,7 @@ void VulkanRenderer::CreateBlinnPhongDescriptorSetLayout()
 	MaterialUBOLayoutBinding.binding = 2;
 	MaterialUBOLayoutBinding.descriptorCount = 1;
 	MaterialUBOLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-	MaterialUBOLayoutBinding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+	MaterialUBOLayoutBinding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
 	MaterialUBOLayoutBinding.pImmutableSamplers = nullptr;
 
 	std::vector<VkDescriptorSetLayoutBinding> vecDescriptorLayoutBinding = {

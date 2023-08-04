@@ -158,15 +158,26 @@ void UI::Draw()
     {
         auto pLight = m_pRenderer->GetBlinnPhongPointLight();
         ImGui::SeparatorText("Color");
-        ImGui::ColorPicker4("Ambient", (float*)&(pLight->ambient), ImGuiColorEditFlags_NoOptions | ImGuiColorEditFlags_NoInputs);
-        ImGui::ColorPicker4("Diffuse", (float*)&(pLight->diffuse), ImGuiColorEditFlags_NoOptions | ImGuiColorEditFlags_NoInputs);
-        ImGui::ColorPicker4("Specular", (float*)&(pLight->specular), ImGuiColorEditFlags_NoOptions | ImGuiColorEditFlags_NoInputs);
+
+        ImGui::ColorEdit4("Ambient", (float*)&(pLight->ambient), ImGuiColorEditFlags_NoOptions | ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_DisplayRGB);
+        ImGui::ColorEdit4("Diffuse", (float*)&(pLight->diffuse), ImGuiColorEditFlags_NoOptions | ImGuiColorEditFlags_NoInputs| ImGuiColorEditFlags_DisplayRGB);
+        ImGui::ColorEdit4("Specular", (float*)&(pLight->specular), ImGuiColorEditFlags_NoOptions | ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_DisplayRGB);
         
         ImGui::SeparatorText("Attenuation");
-
+        ImGui::DragFloat("Constant", &pLight->fConstantAttenuation, 0.1f, 1.f, 100.f, "%.1f");
+        ImGui::DragFloat("Linear", &pLight->fLinearAttenuation, 0.1f, 0.f, 100.f, "%.1f");
+        ImGui::DragFloat("Quadratic", &pLight->fQuadraticAttenuation, 0.1f, 0.f, 100.f, "%.1f");
+    }
+    if (ImGui::CollapsingHeader("Material", ImGuiTreeNodeFlags_DefaultOpen))
+    {
+        auto pMaterial = m_pRenderer->GetBlinnPhongMaterial();
+        ImGui::ColorEdit4("Ambient Coef", (float*)&(pMaterial->ambientCoefficient), ImGuiColorEditFlags_NoOptions | ImGuiColorEditFlags_NoInputs);
+        ImGui::ColorEdit4("Diffuse Coef", (float*)&(pMaterial->diffuseCoefficient), ImGuiColorEditFlags_NoOptions | ImGuiColorEditFlags_NoInputs);
+        ImGui::ColorEdit4("Specular Coef", (float*)&(pMaterial->specularCoefficient), ImGuiColorEditFlags_NoOptions | ImGuiColorEditFlags_NoInputs);
+        ImGui::DragFloat("Shininess", &pMaterial->fShininess, 0.1f, 0.f, 100.f, "%.1f");
     }
 
-    ImGui::ShowDemoWindow();
+    //ImGui::ShowDemoWindow();
 
     ImGui::End();
 }
