@@ -79,7 +79,11 @@ namespace DZW_MaterialWrap
 
 	struct PBRMaterial
 	{
-
+		glm::vec3 albedo = glm::vec3(1.f);
+		glm::vec3 f0 = glm::vec3(0.f);
+		float fMetallic = 0.f;
+		float fRoughness = 0.f;
+		float fAO = 0.f;
 	};
 };
 
@@ -99,24 +103,20 @@ namespace DZW_LightWrap
 		float fConstantAttenuation = 1.f;
 		float fLinearAttenuation = 0.f;
 		float fQuadraticAttenuation = 0.f;
-
-		float GetIntensify(float fDistance)
-		{
-			float fAttenuation = 1 / (fConstantAttenuation +
-				fLinearAttenuation * fDistance +
-				fQuadraticAttenuation * fDistance * fDistance);
-
-			return std::clamp(fIntensify * fAttenuation, 0.f, 1.f);
-		}
-
-		glm::vec4 GetAmbient(float fDistance) { return ambient * GetIntensify(fDistance); }
-		glm::vec4 GetDiffuse(float fDistance) { return diffuse * GetIntensify(fDistance); }
-		glm::vec4 GetSpecular(float fDistance) { return specular * GetIntensify(fDistance); }
 	};
 
 	struct PBRPointLight
 	{
+		glm::vec3 position = glm::vec3(0.f);
+		float fIntensify = 1.f;
 
+		glm::vec4 color = glm::vec4(1.f);
+
+		//attenuation
+		//1.0 / (const + linear * d + quad * d^2)
+		float fConstantAttenuation = 1.f;
+		float fLinearAttenuation = 0.f;
+		float fQuadraticAttenuation = 0.f;
 	};
 }
 

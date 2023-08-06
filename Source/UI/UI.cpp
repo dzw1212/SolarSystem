@@ -159,9 +159,9 @@ void UI::Draw()
         auto pLight = m_pRenderer->GetBlinnPhongPointLight();
         ImGui::SeparatorText("Color");
 
-        ImGui::ColorEdit4("Ambient", (float*)&(pLight->ambient), ImGuiColorEditFlags_NoOptions | ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_DisplayRGB);
-        ImGui::ColorEdit4("Diffuse", (float*)&(pLight->diffuse), ImGuiColorEditFlags_NoOptions | ImGuiColorEditFlags_NoInputs| ImGuiColorEditFlags_DisplayRGB);
-        ImGui::ColorEdit4("Specular", (float*)&(pLight->specular), ImGuiColorEditFlags_NoOptions | ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_DisplayRGB);
+        ImGui::ColorEdit4("Ambient", (float*)&(pLight->ambient), ImGuiColorEditFlags_NoOptions | ImGuiColorEditFlags_NoInputs);
+        ImGui::ColorEdit4("Diffuse", (float*)&(pLight->diffuse), ImGuiColorEditFlags_NoOptions | ImGuiColorEditFlags_NoInputs);
+        ImGui::ColorEdit4("Specular", (float*)&(pLight->specular), ImGuiColorEditFlags_NoOptions | ImGuiColorEditFlags_NoInputs);
         
         ImGui::SeparatorText("Attenuation");
         ImGui::DragFloat("Constant", &pLight->fConstantAttenuation, 0.1f, 1.f, 100.f, "%.1f");
