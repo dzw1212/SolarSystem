@@ -359,9 +359,7 @@ public:
 	struct BlinnPhongLightUniformBufferObject
 	{
 		alignas(16) glm::vec3 position;
-		alignas(16) glm::vec4 ambient;
-		alignas(16) glm::vec4 diffuse;
-		alignas(16) glm::vec4 specular;
+		alignas(16) glm::vec4 color;
 
 		alignas(4) float intensify;
 		//Attenuation

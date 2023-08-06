@@ -94,9 +94,7 @@ namespace DZW_LightWrap
 		glm::vec3 position = glm::vec3(0.f);
 		float fIntensify = 1.f;
 
-		glm::vec4 ambient = glm::vec4(1.f);
-		glm::vec4 diffuse = glm::vec4(1.f);
-		glm::vec4 specular = glm::vec4(1.f);
+		glm::vec4 color = glm::vec4(1.f);
 
 		//attenuation
 		//1.0 / (const + linear * d + quad * d^2)

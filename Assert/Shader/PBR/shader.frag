@@ -10,9 +10,7 @@ layout (location = 0) out vec4 outColor;
 layout (binding = 1) uniform LightUniformBufferObject
 {
 	vec3 position;
-	vec4 ambient;
-	vec4 diffuse;
-	vec4 specular;
+	vec3 color;
     float intensify;
     float constant;
     float linear;
@@ -91,7 +89,7 @@ void main()
 	vec3 Light = normalize(lightUBO.position - inPosition);
 	vec3 View = normalize(vec3(0.f, 0.f, 0.f) - inPosition); //视图空间中摄像机位于原点
 
-	
+
 
 
 	outColor = vec4(1.f);

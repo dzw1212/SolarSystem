@@ -8,9 +8,7 @@ layout (location = 0) out vec4 outColor;
 layout (binding = 1) uniform LightUniformBufferObject
 {
 	vec3 position;
-	vec4 ambient;
-	vec4 diffuse;
-	vec4 specular;
+	vec4 color;
     float intensify;
     float constant;
     float linear;
@@ -34,9 +32,9 @@ void main()
     float lightDistance = distance(inPosition, lightUBO.position);
     float attenuationIntensify = lightUBO.intensify / (lightUBO.constant + lightUBO.linear * lightDistance + lightUBO.quadratic * lightDistance * lightDistance);
 
-	vec4 ambient = lightUBO.ambient * attenuationIntensify * materialUBO.ambient;
-	vec4 diffuse = lightUBO.diffuse * attenuationIntensify * materialUBO.diffuse * max(0.0, dot(inNormal, Light));
-	vec4 specular = lightUBO.specular * attenuationIntensify * materialUBO.specular * pow(max(0.0, dot(inNormal, Half)), materialUBO.shininess);
+	vec4 ambient = lightUBO.color * attenuationIntensify * materialUBO.ambient;
+	vec4 diffuse = lightUBO.color * attenuationIntensify * materialUBO.diffuse * max(0.0, dot(inNormal, Light));
+	vec4 specular = lightUBO.color * attenuationIntensify * materialUBO.specular * pow(max(0.0, dot(inNormal, Half)), materialUBO.shininess);
 
 	outColor = ambient + diffuse + specular;
 }

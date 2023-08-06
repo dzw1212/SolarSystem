@@ -3834,9 +3834,7 @@ void VulkanRenderer::UpdateBlinnPhongLightUniformBuffer(UINT uiIdx)
 {
 	m_BlinnPhongLightUBOData.position = m_Camera.GetViewMatrix() * glm::vec4(m_BlinnPhongPointLight.position, 1.0); //转到视图空间
 
-	m_BlinnPhongLightUBOData.ambient = m_BlinnPhongPointLight.ambient;
-	m_BlinnPhongLightUBOData.diffuse = m_BlinnPhongPointLight.diffuse;
-	m_BlinnPhongLightUBOData.specular = m_BlinnPhongPointLight.specular;
+	m_BlinnPhongLightUBOData.color = m_BlinnPhongPointLight.color;
 
 	m_BlinnPhongLightUBOData.intensify = m_BlinnPhongPointLight.fIntensify;
 
