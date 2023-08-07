@@ -169,9 +169,9 @@ void UI::Draw()
     if (ImGui::CollapsingHeader("Material", ImGuiTreeNodeFlags_DefaultOpen))
     {
         auto pMaterial = m_pRenderer->GetBlinnPhongMaterial();
-        ImGui::ColorEdit4("Ambient Coef", (float*)&(pMaterial->ambientCoefficient), ImGuiColorEditFlags_NoOptions | ImGuiColorEditFlags_NoInputs);
-        ImGui::ColorEdit4("Diffuse Coef", (float*)&(pMaterial->diffuseCoefficient), ImGuiColorEditFlags_NoOptions | ImGuiColorEditFlags_NoInputs);
-        ImGui::ColorEdit4("Specular Coef", (float*)&(pMaterial->specularCoefficient), ImGuiColorEditFlags_NoOptions | ImGuiColorEditFlags_NoInputs);
+        ImGui::ColorEdit4("Ambient", (float*)&(pMaterial->ambientCoefficient), ImGuiColorEditFlags_NoOptions | ImGuiColorEditFlags_NoInputs);
+        ImGui::ColorEdit4("Diffuse", (float*)&(pMaterial->diffuseCoefficient), ImGuiColorEditFlags_NoOptions | ImGuiColorEditFlags_NoInputs);
+        ImGui::ColorEdit4("Specular", (float*)&(pMaterial->specularCoefficient), ImGuiColorEditFlags_NoOptions | ImGuiColorEditFlags_NoInputs);
         ImGui::DragFloat("Shininess", &pMaterial->fShininess, 0.1f, 0.f, 100.f, "%.1f");
     }
 

@@ -59,17 +59,17 @@ float G_SchlickGGX(float roughness, float dotNL, float dotNV)
 
 vec3 Specular_CookTorrance(float D, vec3 F, float G, float dotNL, float dotNV)
 {
-	return (D * F * G) / (4.0 * dotNL * dotNV);
+	return (D * F * G) / (4.0 * dotNL * dotNV + 0.001);
 }
 
 
 vec3 BRDF(vec3 N, vec3 L, vec3 V, vec3 baseColor, float metallic, float roughness)
 {
 	vec3 H = normalize(V + L);
-	float dotNL = dot(N, L);
-	float dotNV = dot(N, V);
-	float dotVH = dot(V, H);
-	float dotNH = dot(N, H);
+	float dotNL = clamp(dot(N, L), 0.0, 1.0);
+	float dotNV = clamp(dot(N, V), 0.0, 1.0);
+	float dotVH = clamp(dot(V, H), 0.0, 1.0);
+	float dotNH = clamp(dot(N, H), 0.0, 1.0);
 
 	//Diffuse BRDF
 	vec3 BRDF_Diffuse = Diffuse_Disney(baseColor, roughness, dotNL, dotNV, dotVH);
@@ -81,7 +81,7 @@ vec3 BRDF(vec3 N, vec3 L, vec3 V, vec3 baseColor, float metallic, float roughnes
 
 	vec3 BRDF_Specular = Specular_CookTorrance(D, F, G, dotNL, dotNV);
 
-	return BRDF_Diffuse + BRDF_Specular;
+	return BRDF_Specular;
 }
 
 //----------------------------------------------------------
@@ -91,8 +91,31 @@ void main()
 	vec3 Light = normalize(lightUBO.position - inPosition);
 	vec3 View = normalize(vec3(0.f, 0.f, 0.f) - inPosition); //视图空间中摄像机位于原点
 
-    vec3 color = BRDF(inNormal, Light, View, materialUBO.baseColor, materialUBO.metallic, materialUBO.roughness);
-    color = pow(color, vec3(1.0 / GAMMA));
+	// float lightDistance = distance(inPosition, lightUBO.position);
+    // float attenuationIntensify = lightUBO.intensify / (lightUBO.constant + lightUBO.linear * lightDistance + lightUBO.quadratic * lightDistance * lightDistance);
 
-	outColor = vec4(1.f);
+	// float dotNL = clamp(dot(inNormal, Light), 0.0, 1.0);
+    // vec3 color = BRDF(inNormal, Light, View, materialUBO.baseColor, materialUBO.metallic, materialUBO.roughness) * dotNL * lightUBO.color * 10.f;
+    // color += vec3(materialUBO.ao);
+	// color = pow(color, vec3(1.0 / GAMMA));
+
+	vec3 L = Light;
+	vec3 V = View;
+	vec3 N = inNormal;
+	vec3 H = normalize(View + Light);
+	float dotNL = clamp(dot(N, L), 0.0, 1.0);
+	float dotNV = clamp(dot(N, V), 0.0, 1.0);
+	float dotVH = clamp(dot(V, H), 0.0, 1.0);
+	float dotNH = clamp(dot(N, H), 0.0, 1.0);
+
+	vec3 baseColor = materialUBO.baseColor;
+	float metallic = materialUBO.metallic;
+	float roughness = max(materialUBO.roughness, 0.05);
+
+	float D = D_GGX(roughness, dotNH);
+	vec3 F = F_Schlick(baseColor, metallic, dotVH);
+	float G = G_SchlickGGX(roughness, dotNL, dotNV);
+
+	vec3 color = vec3(D);
+	outColor = vec4(color, 1.0);
 }

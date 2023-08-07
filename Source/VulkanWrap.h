@@ -79,8 +79,7 @@ namespace DZW_MaterialWrap
 
 	struct PBRMaterial
 	{
-		glm::vec3 albedo = glm::vec3(1.f);
-		glm::vec3 f0 = glm::vec3(0.f);
+		glm::vec3 baseColor = glm::vec3(1.f, 0.f, 0.f);
 		float fMetallic = 0.f;
 		float fRoughness = 0.f;
 		float fAO = 0.f;

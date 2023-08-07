@@ -152,6 +152,19 @@ void VulkanRenderer::Init()
 	CreateBlinnPhongGraphicPipelineLayout();
 	CreateBlinnPhongGraphicPipeline();
 
+	//PBR
+	InitPBRLightMaterialInfo();
+	LoadModel("./Assert/Model/sphere.gltf", m_PBRModel);
+	CreatePBRShaderModule();
+	CreatePBRMVPUniformBuffers();
+	CreatePBRLightUniformBuffers();
+	CreatePBRMaterialUniformBuffers();
+	CreatePBRDescriptorSetLayout();
+	CreatePBRDescriptorPool();
+	CreatePBRDescriptorSets();
+	CreatePBRGraphicPipelineLayout();
+	CreatePBRGraphicPipeline();
+
 	SetupCamera();
 
 	if (ENABLE_GUI)
@@ -257,6 +270,32 @@ void VulkanRenderer::Clean()
 
 	vkDestroyPipeline(m_LogicalDevice, m_BlinnPhongGraphicPipeline, nullptr);
 	vkDestroyPipelineLayout(m_LogicalDevice, m_BlinnPhongGraphicPipelineLayout, nullptr);
+
+
+	//PBR
+	FreeModel(m_PBRModel);
+
+	for (const auto& shaderModule : m_mapPBRShaderModule)
+	{
+		vkDestroyShaderModule(m_LogicalDevice, shaderModule.second, nullptr);
+	}
+	for (size_t i = 0; i < m_vecSwapChainImages.size(); ++i)
+	{
+		vkFreeMemory(m_LogicalDevice, m_vecPBRMVPUniformBufferMemories[i], nullptr);
+		vkDestroyBuffer(m_LogicalDevice, m_vecPBRMVPUniformBuffers[i], nullptr);
+
+		vkFreeMemory(m_LogicalDevice, m_vecPBRLightUniformBufferMemories[i], nullptr);
+		vkDestroyBuffer(m_LogicalDevice, m_vecPBRLightUniformBuffers[i], nullptr);
+
+		vkFreeMemory(m_LogicalDevice, m_vecPBRMaterialUniformBufferMemories[i], nullptr);
+		vkDestroyBuffer(m_LogicalDevice, m_vecPBRMaterialUniformBuffers[i], nullptr);
+	}
+
+	vkDestroyDescriptorPool(m_LogicalDevice, m_PBRDescriptorPool, nullptr);
+	vkDestroyDescriptorSetLayout(m_LogicalDevice, m_PBRDescriptorSetLayout, nullptr);
+
+	vkDestroyPipeline(m_LogicalDevice, m_PBRGraphicPipeline, nullptr);
+	vkDestroyPipelineLayout(m_LogicalDevice, m_PBRGraphicPipelineLayout, nullptr);
 
 	//----------------------------------------------------------------------------
 	_aligned_free(m_DynamicUboData.model);
@@ -3074,6 +3113,25 @@ void VulkanRenderer::RecordCommandBuffer(VkCommandBuffer& commandBuffer, UINT ui
 		vkCmdDrawIndexed(commandBuffer, static_cast<UINT>(m_BlinnPhongModel.m_vecIndices.size()), 1, 0, 0, 0);
 	}
 
+	if (m_bEnablePBR)
+	{
+		vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m_PBRGraphicPipeline);
+		VkBuffer PBRVertexBuffers[] = {
+			m_PBRModel.m_VertexBuffer,
+		};
+		VkDeviceSize PBROffsets[]{ 0 };
+		vkCmdBindVertexBuffers(commandBuffer, 0, 1, PBRVertexBuffers, PBROffsets);
+		vkCmdBindIndexBuffer(commandBuffer, m_PBRModel.m_IndexBuffer, 0, VK_INDEX_TYPE_UINT32);
+		vkCmdBindDescriptorSets(commandBuffer,
+			VK_PIPELINE_BIND_POINT_GRAPHICS,
+			m_PBRGraphicPipelineLayout,
+			0, 1,
+			&m_vecPBRDescriptorSets[uiIdx],
+			0, NULL);
+
+		vkCmdDrawIndexed(commandBuffer, static_cast<UINT>(m_PBRModel.m_vecIndices.size()), 1, 0, 0, 0);
+	}
+
 	//vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m_GraphicPipeline);
 	//VkBuffer vertexBuffers[] = {
 	//	m_Model.m_VertexBuffer,
@@ -3212,6 +3270,13 @@ void VulkanRenderer::Render()
 		UpdateBlinnPhongMVPUniformBuffer(m_uiCurFrameIdx);
 		UpdateBlinnPhongLightUniformBuffer(m_uiCurFrameIdx);
 		UpdateBlinnPhongMaterialUniformBuffer(m_uiCurFrameIdx);
+	}
+
+	if (m_bEnablePBR)
+	{
+		UpdatePBRMVPUniformBuffer(m_uiCurFrameIdx);
+		UpdatePBRLightUniformBuffer(m_uiCurFrameIdx);
+		UpdatePBRMaterialUniformBuffer(m_uiCurFrameIdx);
 	}
 
 	RecordCommandBuffer(m_vecCommandBuffers[m_uiCurFrameIdx], m_uiCurFrameIdx);
@@ -4165,4 +4230,417 @@ void VulkanRenderer::CreateBlinnPhongGraphicPipeline()
 	pipelineCreateInfo.basePipelineIndex = -1;
 
 	VULKAN_ASSERT(vkCreateGraphicsPipelines(m_LogicalDevice, VK_NULL_HANDLE, 1, &pipelineCreateInfo, nullptr, &m_BlinnPhongGraphicPipeline), "Create BlinnPhong graphic pipeline failed");
+}
+
+void VulkanRenderer::InitPBRLightMaterialInfo()
+{
+	m_PBRPointLight.position = { 5.f, 0.f, 0.f };
+	m_PBRPointLight.fIntensify = 1.f;
+
+	m_PBRMaterial.baseColor = { 1.0, 0.782, 0.344 };
+	m_PBRMaterial.fMetallic = 1.0f;
+	m_PBRMaterial.fRoughness = 0.f;
+	m_PBRMaterial.fAO = 0.f;
+}
+
+void VulkanRenderer::CreatePBRShaderModule()
+{
+	std::unordered_map<VkShaderStageFlagBits, std::filesystem::path> mapPBRShaderPath = {
+	{ VK_SHADER_STAGE_VERTEX_BIT,	"./Assert/Shader/PBR/vert.spv" },
+	{ VK_SHADER_STAGE_FRAGMENT_BIT,	"./Assert/Shader/PBR/frag.spv" },
+	};
+	ASSERT(mapPBRShaderPath.size() > 0, "Detect no shader spv file");
+
+	m_mapPBRShaderModule.clear();
+
+	for (const auto& spvPath : mapPBRShaderPath)
+	{
+		auto shaderModule = DZW_VulkanUtils::CreateShaderModule(m_LogicalDevice, DZW_VulkanUtils::ReadShaderFile(spvPath.second));
+
+		m_mapPBRShaderModule[spvPath.first] = shaderModule;
+	}
+}
+
+void VulkanRenderer::CreatePBRMVPUniformBuffers()
+{
+	m_vecPBRMVPUniformBuffers.resize(m_vecSwapChainImages.size());
+	m_vecPBRMVPUniformBufferMemories.resize(m_vecSwapChainImages.size());
+
+	for (size_t i = 0; i < m_vecSwapChainImages.size(); ++i)
+	{
+		CreateBufferAndBindMemory(sizeof(PBRMVPUniformBufferObject),
+			VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
+			VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+			m_vecPBRMVPUniformBuffers[i],
+			m_vecPBRMVPUniformBufferMemories[i]
+		);
+	}
+}
+
+void VulkanRenderer::UpdatePBRMVPUniformBuffer(UINT uiIdx)
+{
+	m_PBRMVPUBOData.model = glm::translate(glm::mat4(1.f), { 10.f, 0.f, 0.f });
+	m_PBRMVPUBOData.view = m_Camera.GetViewMatrix();
+	m_PBRMVPUBOData.proj = m_Camera.GetProjMatrix();
+	m_PBRMVPUBOData.proj[1][1] *= -1.f;
+
+	m_PBRMVPUBOData.mv_normal = glm::transpose(glm::inverse(m_PBRMVPUBOData.view * m_PBRMVPUBOData.model));
+
+	void* uniformBufferData;
+	vkMapMemory(m_LogicalDevice, m_vecPBRMVPUniformBufferMemories[uiIdx], 0, sizeof(PBRMVPUniformBufferObject), 0, &uniformBufferData);
+	memcpy(uniformBufferData, &m_PBRMVPUBOData, sizeof(PBRMVPUniformBufferObject));
+	vkUnmapMemory(m_LogicalDevice, m_vecPBRMVPUniformBufferMemories[uiIdx]);
+}
+
+void VulkanRenderer::CreatePBRLightUniformBuffers()
+{
+	m_vecPBRLightUniformBuffers.resize(m_vecSwapChainImages.size());
+	m_vecPBRLightUniformBufferMemories.resize(m_vecSwapChainImages.size());
+
+	for (size_t i = 0; i < m_vecSwapChainImages.size(); ++i)
+	{
+		CreateBufferAndBindMemory(sizeof(PBRLightUniformBufferObject),
+			VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
+			VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+			m_vecPBRLightUniformBuffers[i],
+			m_vecPBRLightUniformBufferMemories[i]
+		);
+	}
+}
+
+void VulkanRenderer::UpdatePBRLightUniformBuffer(UINT uiIdx)
+{
+	m_PBRLightUBOData.position = m_Camera.GetViewMatrix() * glm::vec4(m_PBRPointLight.position, 1.0); //转到视图空间
+
+	m_PBRLightUBOData.color = m_PBRPointLight.color;
+
+	m_PBRLightUBOData.intensify = m_PBRPointLight.fIntensify;
+
+	m_PBRLightUBOData.constant = m_PBRPointLight.fConstantAttenuation;
+	m_PBRLightUBOData.linear = m_PBRPointLight.fLinearAttenuation;
+	m_PBRLightUBOData.quadratic = m_PBRPointLight.fQuadraticAttenuation;
+
+	void* uniformBufferData;
+	vkMapMemory(m_LogicalDevice, m_vecPBRLightUniformBufferMemories[uiIdx], 0, sizeof(PBRLightUniformBufferObject), 0, &uniformBufferData);
+	memcpy(uniformBufferData, &m_PBRLightUBOData, sizeof(PBRLightUniformBufferObject));
+	vkUnmapMemory(m_LogicalDevice, m_vecPBRLightUniformBufferMemories[uiIdx]);
+}
+
+void VulkanRenderer::CreatePBRMaterialUniformBuffers()
+{
+	m_vecPBRMaterialUniformBuffers.resize(m_vecSwapChainImages.size());
+	m_vecPBRMaterialUniformBufferMemories.resize(m_vecSwapChainImages.size());
+
+	for (size_t i = 0; i < m_vecSwapChainImages.size(); ++i)
+	{
+		CreateBufferAndBindMemory(sizeof(PBRMaterialUniformBufferObject),
+			VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
+			VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+			m_vecPBRMaterialUniformBuffers[i],
+			m_vecPBRMaterialUniformBufferMemories[i]
+		);
+	}
+}
+
+void VulkanRenderer::UpdatePBRMaterialUniformBuffer(UINT uiIdx)
+{
+	m_PBRMaterialUBOData.baseColor = m_PBRMaterial.baseColor;
+	m_PBRMaterialUBOData.metallic = m_PBRMaterial.fMetallic;
+	m_PBRMaterialUBOData.roughness = m_PBRMaterial.fRoughness;
+	m_PBRMaterialUBOData.ao = m_PBRMaterial.fAO;
+
+	void* uniformBufferData;
+	vkMapMemory(m_LogicalDevice, m_vecPBRMaterialUniformBufferMemories[uiIdx], 0, sizeof(PBRMaterialUniformBufferObject), 0, &uniformBufferData);
+	memcpy(uniformBufferData, &m_PBRMaterialUBOData, sizeof(PBRMaterialUniformBufferObject));
+	vkUnmapMemory(m_LogicalDevice, m_vecPBRMaterialUniformBufferMemories[uiIdx]);
+}
+
+void VulkanRenderer::CreatePBRDescriptorSetLayout()
+{
+	//MVP UBO Binding
+	VkDescriptorSetLayoutBinding MVPUBOLayoutBinding{};
+	MVPUBOLayoutBinding.binding = 0;
+	MVPUBOLayoutBinding.descriptorCount = 1;
+	MVPUBOLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+	MVPUBOLayoutBinding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+	MVPUBOLayoutBinding.pImmutableSamplers = nullptr;
+
+	//Light UBO Binding
+	VkDescriptorSetLayoutBinding LightUBOLayoutBinding{};
+	LightUBOLayoutBinding.binding = 1;
+	LightUBOLayoutBinding.descriptorCount = 1;
+	LightUBOLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+	LightUBOLayoutBinding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+	LightUBOLayoutBinding.pImmutableSamplers = nullptr;
+
+	//Material UBO Binding
+	VkDescriptorSetLayoutBinding MaterialUBOLayoutBinding{};
+	MaterialUBOLayoutBinding.binding = 2;
+	MaterialUBOLayoutBinding.descriptorCount = 1;
+	MaterialUBOLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+	MaterialUBOLayoutBinding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+	MaterialUBOLayoutBinding.pImmutableSamplers = nullptr;
+
+	std::vector<VkDescriptorSetLayoutBinding> vecDescriptorLayoutBinding = {
+		MVPUBOLayoutBinding,
+		LightUBOLayoutBinding,
+		MaterialUBOLayoutBinding
+	};
+
+	VkDescriptorSetLayoutCreateInfo createInfo{};
+	createInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+	createInfo.bindingCount = static_cast<UINT>(vecDescriptorLayoutBinding.size());
+	createInfo.pBindings = vecDescriptorLayoutBinding.data();
+
+	VULKAN_ASSERT(vkCreateDescriptorSetLayout(m_LogicalDevice, &createInfo, nullptr, &m_PBRDescriptorSetLayout), "Create PBR descriptor layout failed");
+}
+
+void VulkanRenderer::CreatePBRDescriptorPool()
+{
+	VkDescriptorPoolSize MVPUBOPoolSize{};
+	MVPUBOPoolSize.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+	MVPUBOPoolSize.descriptorCount = static_cast<UINT>(m_vecSwapChainImages.size());
+
+	VkDescriptorPoolSize lightUBOPoolSize{};
+	lightUBOPoolSize.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+	lightUBOPoolSize.descriptorCount = static_cast<UINT>(m_vecSwapChainImages.size());
+
+	VkDescriptorPoolSize materialUBOPoolSize{};
+	materialUBOPoolSize.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+	materialUBOPoolSize.descriptorCount = static_cast<UINT>(m_vecSwapChainImages.size());
+
+	std::vector<VkDescriptorPoolSize> vecPoolSize = {
+		MVPUBOPoolSize,
+		lightUBOPoolSize,
+		materialUBOPoolSize
+	};
+
+	VkDescriptorPoolCreateInfo poolCreateInfo{};
+	poolCreateInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+	poolCreateInfo.poolSizeCount = static_cast<UINT>(vecPoolSize.size());
+	poolCreateInfo.pPoolSizes = vecPoolSize.data();
+	poolCreateInfo.maxSets = static_cast<UINT>(m_vecSwapChainImages.size());
+
+	VULKAN_ASSERT(vkCreateDescriptorPool(m_LogicalDevice, &poolCreateInfo, nullptr, &m_PBRDescriptorPool), "Create PBR descriptor pool failed");
+}
+
+void VulkanRenderer::CreatePBRDescriptorSets()
+{
+	VkDescriptorSetAllocateInfo allocInfo{};
+	allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+	allocInfo.descriptorSetCount = static_cast<UINT>(m_vecSwapChainImages.size());
+	allocInfo.descriptorPool = m_PBRDescriptorPool;
+
+	std::vector<VkDescriptorSetLayout> vecDupDescriptorSetLayout(m_vecSwapChainImages.size(), m_PBRDescriptorSetLayout);
+	allocInfo.pSetLayouts = vecDupDescriptorSetLayout.data();
+
+	m_vecPBRDescriptorSets.resize(m_vecSwapChainImages.size());
+	VULKAN_ASSERT(vkAllocateDescriptorSets(m_LogicalDevice, &allocInfo, m_vecPBRDescriptorSets.data()), "Allocate PBR desctiprot sets failed");
+
+	for (size_t i = 0; i < m_vecSwapChainImages.size(); ++i)
+	{
+		VkDescriptorBufferInfo MVPDescriptorBufferInfo{};
+		MVPDescriptorBufferInfo.buffer = m_vecPBRMVPUniformBuffers[i];
+		MVPDescriptorBufferInfo.offset = 0;
+		MVPDescriptorBufferInfo.range = sizeof(PBRMVPUniformBufferObject);
+
+		VkDescriptorBufferInfo lightDscriptorBufferInfo{};
+		lightDscriptorBufferInfo.buffer = m_vecPBRLightUniformBuffers[i];
+		lightDscriptorBufferInfo.offset = 0;
+		lightDscriptorBufferInfo.range = sizeof(PBRLightUniformBufferObject);
+
+		VkDescriptorBufferInfo materialDescriptorBufferInfo{};
+		materialDescriptorBufferInfo.buffer = m_vecPBRMaterialUniformBuffers[i];
+		materialDescriptorBufferInfo.offset = 0;
+		materialDescriptorBufferInfo.range = sizeof(PBRMaterialUniformBufferObject);
+
+		VkWriteDescriptorSet MVPUBOWrite{};
+		MVPUBOWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+		MVPUBOWrite.dstSet = m_vecPBRDescriptorSets[i];
+		MVPUBOWrite.dstBinding = 0;
+		MVPUBOWrite.dstArrayElement = 0;
+		MVPUBOWrite.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+		MVPUBOWrite.descriptorCount = 1;
+		MVPUBOWrite.pBufferInfo = &MVPDescriptorBufferInfo;
+
+		VkWriteDescriptorSet lightUBOWrite{};
+		lightUBOWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+		lightUBOWrite.dstSet = m_vecPBRDescriptorSets[i];
+		lightUBOWrite.dstBinding = 1;
+		lightUBOWrite.dstArrayElement = 0;
+		lightUBOWrite.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+		lightUBOWrite.descriptorCount = 1;
+		lightUBOWrite.pBufferInfo = &lightDscriptorBufferInfo;
+
+		VkWriteDescriptorSet materialUBOWrite{};
+		materialUBOWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+		materialUBOWrite.dstSet = m_vecPBRDescriptorSets[i];
+		materialUBOWrite.dstBinding = 2;
+		materialUBOWrite.dstArrayElement = 0;
+		materialUBOWrite.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+		materialUBOWrite.descriptorCount = 1;
+		materialUBOWrite.pBufferInfo = &materialDescriptorBufferInfo;
+
+		std::vector<VkWriteDescriptorSet> vecDescriptorWrite = {
+			MVPUBOWrite,
+			lightUBOWrite,
+			materialUBOWrite
+		};
+
+		vkUpdateDescriptorSets(m_LogicalDevice, static_cast<UINT>(vecDescriptorWrite.size()), vecDescriptorWrite.data(), 0, nullptr);
+	}
+}
+
+void VulkanRenderer::CreatePBRGraphicPipelineLayout()
+{
+	VkPipelineLayoutCreateInfo pipelineLayoutCreateInfo{};
+	pipelineLayoutCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+	pipelineLayoutCreateInfo.setLayoutCount = 1;
+	pipelineLayoutCreateInfo.pSetLayouts = &m_PBRDescriptorSetLayout;
+	pipelineLayoutCreateInfo.pushConstantRangeCount = 0;
+	pipelineLayoutCreateInfo.pPushConstantRanges = nullptr;
+
+	VULKAN_ASSERT(vkCreatePipelineLayout(m_LogicalDevice, &pipelineLayoutCreateInfo, nullptr, &m_PBRGraphicPipelineLayout), "Create PBR pipeline layout failed");
+}
+
+void VulkanRenderer::CreatePBRGraphicPipeline()
+{
+	/****************************可编程管线*******************************/
+	VkPipelineShaderStageCreateInfo vertShaderStageCreateInfo{};
+	vertShaderStageCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+	vertShaderStageCreateInfo.stage = VK_SHADER_STAGE_VERTEX_BIT;
+	vertShaderStageCreateInfo.module = m_mapPBRShaderModule.at(VK_SHADER_STAGE_VERTEX_BIT); //Bytecode
+	vertShaderStageCreateInfo.pName = "main"; //要invoke的函数
+
+	VkPipelineShaderStageCreateInfo fragShaderStageCreateInfo{};
+	fragShaderStageCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+	fragShaderStageCreateInfo.stage = VK_SHADER_STAGE_FRAGMENT_BIT;
+	fragShaderStageCreateInfo.module = m_mapPBRShaderModule.at(VK_SHADER_STAGE_FRAGMENT_BIT); //Bytecode
+	fragShaderStageCreateInfo.pName = "main"; //要invoke的函数
+
+	VkPipelineShaderStageCreateInfo shaderStageCreateInfos[] = {
+		vertShaderStageCreateInfo,
+		fragShaderStageCreateInfo,
+	};
+
+	/*****************************固定管线*******************************/
+
+	//-----------------------Dynamic State--------------------------//
+	VkPipelineDynamicStateCreateInfo dynamicStateCreateInfo{};
+	dynamicStateCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO;
+	std::vector<VkDynamicState> vecDynamicStates = {
+		VK_DYNAMIC_STATE_VIEWPORT,
+		VK_DYNAMIC_STATE_SCISSOR,
+	};
+	dynamicStateCreateInfo.dynamicStateCount = static_cast<UINT>(vecDynamicStates.size());
+	dynamicStateCreateInfo.pDynamicStates = vecDynamicStates.data();
+
+	//-----------------------Vertex Input State--------------------------//
+	auto bindingDescription = Vertex3D::GetBindingDescription();
+	auto attributeDescriptions = Vertex3D::GetAttributeDescriptions();
+	VkPipelineVertexInputStateCreateInfo vertexInputCreateInfo{};
+	vertexInputCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
+	vertexInputCreateInfo.vertexBindingDescriptionCount = 1;
+	vertexInputCreateInfo.pVertexBindingDescriptions = &bindingDescription;
+	vertexInputCreateInfo.vertexAttributeDescriptionCount = static_cast<UINT>(attributeDescriptions.size());
+	vertexInputCreateInfo.pVertexAttributeDescriptions = attributeDescriptions.data();
+
+	//-----------------------Input Assembly State------------------------//
+	VkPipelineInputAssemblyStateCreateInfo inputAssemblyCreateInfo{};
+	inputAssemblyCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
+	inputAssemblyCreateInfo.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+	inputAssemblyCreateInfo.primitiveRestartEnable = VK_FALSE;
+
+
+	//-----------------------Viewport State--------------------------//
+	VkPipelineViewportStateCreateInfo viewportStateCreateInfo{};
+	viewportStateCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
+	viewportStateCreateInfo.viewportCount = 1;
+	viewportStateCreateInfo.scissorCount = 1;
+
+	//-----------------------Raserization State--------------------------//
+	VkPipelineRasterizationStateCreateInfo rasterizationStateCreateInfo{};
+	rasterizationStateCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
+	rasterizationStateCreateInfo.depthClampEnable = VK_FALSE;	//开启后，超过远近平面的部分会被截断在远近平面上，而不是丢弃
+	rasterizationStateCreateInfo.rasterizerDiscardEnable = VK_FALSE;	//开启后，禁止所有图元经过光栅化器
+	rasterizationStateCreateInfo.polygonMode = VK_POLYGON_MODE_FILL;	//图元模式，可以是FILL、LINE、POINT
+	rasterizationStateCreateInfo.lineWidth = 1.f;	//指定光栅化后的线段宽度
+	rasterizationStateCreateInfo.cullMode = VK_CULL_MODE_NONE;
+	rasterizationStateCreateInfo.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE; //顶点序，可以是顺时针cw或逆时针ccw
+	rasterizationStateCreateInfo.depthBiasEnable = VK_FALSE; //深度偏移，一般用于Shaodw Map中避免阴影痤疮
+	rasterizationStateCreateInfo.depthBiasConstantFactor = 0.f;
+	rasterizationStateCreateInfo.depthBiasClamp = 0.f;
+	rasterizationStateCreateInfo.depthBiasSlopeFactor = 0.f;
+
+	//-----------------------Multisample State--------------------------//
+	VkPipelineMultisampleStateCreateInfo multisamplingStateCreateInfo{};
+	multisamplingStateCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
+	multisamplingStateCreateInfo.sampleShadingEnable = VK_FALSE;
+	multisamplingStateCreateInfo.minSampleShading = 0.8f;
+	multisamplingStateCreateInfo.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
+	multisamplingStateCreateInfo.minSampleShading = 1.f;
+	multisamplingStateCreateInfo.pSampleMask = nullptr;
+	multisamplingStateCreateInfo.alphaToCoverageEnable = VK_FALSE;
+	multisamplingStateCreateInfo.alphaToOneEnable = VK_FALSE;
+
+	//-----------------------Depth Stencil State--------------------------//
+	VkPipelineDepthStencilStateCreateInfo depthStencilStateCreateInfo{};
+	depthStencilStateCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
+	depthStencilStateCreateInfo.depthTestEnable = VK_TRUE; //作为背景，始终在最远处，不进行深度检测
+	depthStencilStateCreateInfo.depthWriteEnable = VK_TRUE;
+	depthStencilStateCreateInfo.depthCompareOp = VK_COMPARE_OP_LESS_OR_EQUAL;
+	depthStencilStateCreateInfo.depthBoundsTestEnable = VK_FALSE;
+	depthStencilStateCreateInfo.minDepthBounds = 0.f;
+	depthStencilStateCreateInfo.maxDepthBounds = 1.f;
+	depthStencilStateCreateInfo.stencilTestEnable = VK_FALSE;
+	depthStencilStateCreateInfo.front = {};
+	depthStencilStateCreateInfo.back = {};
+
+	//-----------------------Color Blend State--------------------------//
+	VkPipelineColorBlendStateCreateInfo colorBlendStateCreateInfo{};
+	colorBlendStateCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
+	colorBlendStateCreateInfo.logicOpEnable = VK_FALSE;
+	colorBlendStateCreateInfo.logicOp = VK_LOGIC_OP_COPY;
+	colorBlendStateCreateInfo.attachmentCount = 1;
+
+	VkPipelineColorBlendAttachmentState colorBlendAttachment{};
+	colorBlendAttachment.colorWriteMask =
+		VK_COLOR_COMPONENT_R_BIT
+		| VK_COLOR_COMPONENT_G_BIT
+		| VK_COLOR_COMPONENT_B_BIT
+		| VK_COLOR_COMPONENT_A_BIT;
+	colorBlendAttachment.blendEnable = VK_FALSE;
+	colorBlendAttachment.srcColorBlendFactor = VK_BLEND_FACTOR_ONE;
+	colorBlendAttachment.dstColorBlendFactor = VK_BLEND_FACTOR_ZERO;
+	colorBlendAttachment.colorBlendOp = VK_BLEND_OP_ADD;
+	colorBlendAttachment.srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
+	colorBlendAttachment.dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO;
+	colorBlendAttachment.alphaBlendOp = VK_BLEND_OP_ADD;
+
+	colorBlendStateCreateInfo.pAttachments = &colorBlendAttachment;
+	colorBlendStateCreateInfo.blendConstants[0] = 0.f;
+	colorBlendStateCreateInfo.blendConstants[1] = 0.f;
+	colorBlendStateCreateInfo.blendConstants[2] = 0.f;
+	colorBlendStateCreateInfo.blendConstants[3] = 0.f;
+
+	/***********************************************************************/
+	VkGraphicsPipelineCreateInfo pipelineCreateInfo{};
+	pipelineCreateInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
+	pipelineCreateInfo.stageCount = static_cast<UINT>(m_mapPBRShaderModule.size());
+	pipelineCreateInfo.pStages = shaderStageCreateInfos;
+	pipelineCreateInfo.pDynamicState = &dynamicStateCreateInfo;
+	pipelineCreateInfo.pVertexInputState = &vertexInputCreateInfo;
+	pipelineCreateInfo.pInputAssemblyState = &inputAssemblyCreateInfo;
+	pipelineCreateInfo.pViewportState = &viewportStateCreateInfo;
+	pipelineCreateInfo.pRasterizationState = &rasterizationStateCreateInfo;
+	pipelineCreateInfo.pMultisampleState = &multisamplingStateCreateInfo;
+	pipelineCreateInfo.pDepthStencilState = &depthStencilStateCreateInfo;
+	pipelineCreateInfo.pColorBlendState = &colorBlendStateCreateInfo;
+	pipelineCreateInfo.layout = m_PBRGraphicPipelineLayout;
+	pipelineCreateInfo.renderPass = m_RenderPass;
+	pipelineCreateInfo.subpass = 0;
+	pipelineCreateInfo.basePipelineHandle = VK_NULL_HANDLE;
+	pipelineCreateInfo.basePipelineIndex = -1;
+
+	VULKAN_ASSERT(vkCreateGraphicsPipelines(m_LogicalDevice, VK_NULL_HANDLE, 1, &pipelineCreateInfo, nullptr, &m_PBRGraphicPipeline), "Create PBR graphic pipeline failed");
 }

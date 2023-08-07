@@ -396,6 +396,54 @@ public:
 	void CreateBlinnPhongGraphicPipelineLayout();
 	void CreateBlinnPhongGraphicPipeline();
 
+public:
+	struct PBRMVPUniformBufferObject
+	{
+		glm::mat4 model;
+		glm::mat4 view;
+		glm::mat4 proj;
+		glm::mat4 mv_normal; //用于将normal转到视图空间
+	};
+
+	struct PBRLightUniformBufferObject
+	{
+		alignas(16) glm::vec3 position;
+		alignas(16) glm::vec4 color;
+
+		alignas(4) float intensify;
+		//Attenuation
+		alignas(4) float constant;
+		alignas(4) float linear;
+		alignas(4) float quadratic;
+	};
+
+	struct PBRMaterialUniformBufferObject
+	{
+		alignas(16) glm::vec3 baseColor;
+		alignas(4)  float metallic;
+		alignas(4)  float roughness;
+		alignas(4)  float ao;
+	};
+
+	void InitPBRLightMaterialInfo();
+
+	void CreatePBRShaderModule();
+
+	void CreatePBRMVPUniformBuffers();
+	void UpdatePBRMVPUniformBuffer(UINT uiIdx);
+
+	void CreatePBRLightUniformBuffers();
+	void UpdatePBRLightUniformBuffer(UINT uiIdx);
+
+	void CreatePBRMaterialUniformBuffers();
+	void UpdatePBRMaterialUniformBuffer(UINT uiIdx);
+
+	void CreatePBRDescriptorSetLayout();
+	void CreatePBRDescriptorPool();
+	void CreatePBRDescriptorSets();
+
+	void CreatePBRGraphicPipelineLayout();
+	void CreatePBRGraphicPipeline();
 
 private:
 	UINT m_uiWindowWidth;
@@ -569,4 +617,32 @@ private:
 
 	VkPipelineLayout m_BlinnPhongGraphicPipelineLayout;
 	VkPipeline m_BlinnPhongGraphicPipeline;
+
+	//PBR
+	bool m_bEnablePBR = true;
+	DZW_MaterialWrap::PBRMaterial m_PBRMaterial;
+	DZW_LightWrap::PBRPointLight m_PBRPointLight;
+
+	DZW_VulkanWrap::Model m_PBRModel;
+
+	std::unordered_map<VkShaderStageFlagBits, VkShaderModule> m_mapPBRShaderModule;
+
+	PBRMVPUniformBufferObject m_PBRMVPUBOData;
+	std::vector<VkBuffer> m_vecPBRMVPUniformBuffers;
+	std::vector<VkDeviceMemory> m_vecPBRMVPUniformBufferMemories;
+
+	PBRLightUniformBufferObject m_PBRLightUBOData;
+	std::vector<VkBuffer> m_vecPBRLightUniformBuffers;
+	std::vector<VkDeviceMemory> m_vecPBRLightUniformBufferMemories;
+
+	PBRMaterialUniformBufferObject m_PBRMaterialUBOData;
+	std::vector<VkBuffer> m_vecPBRMaterialUniformBuffers;
+	std::vector<VkDeviceMemory> m_vecPBRMaterialUniformBufferMemories;
+
+	VkDescriptorSetLayout m_PBRDescriptorSetLayout;
+	VkDescriptorPool m_PBRDescriptorPool;
+	std::vector<VkDescriptorSet> m_vecPBRDescriptorSets;
+
+	VkPipelineLayout m_PBRGraphicPipelineLayout;
+	VkPipeline m_PBRGraphicPipeline;
 };
