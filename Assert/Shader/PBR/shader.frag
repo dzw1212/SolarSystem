@@ -1,6 +1,7 @@
 #version 450
 
 #define PI 3.14159
+#define GAMMA 2.2
 
 layout (location = 0) in vec3 inPosition;
 layout (location = 1) in vec3 inNormal;
@@ -19,10 +20,10 @@ layout (binding = 1) uniform LightUniformBufferObject
 
 layout (binding = 2) uniform MaterialUniformBufferObject
 {
-	vec4 ambient;
-	vec4 diffuse;
-	vec4 specular;
-	float shininess;
+    vec3 baseColor;
+    float metallic;
+    float roughness;
+    float ao;
 }  materialUBO;
 
 //----------------------------------------------------------
@@ -41,8 +42,9 @@ float D_GGX(float roughness, float dotNH)
 	return (roughness * roughness) / (PI * FNH);
 }
 
-vec3 F_Schlick(vec3 f0, float dotVH)
+vec3 F_Schlick(vec3 baseColor, float metallic, float dotVH)
 {
+    vec3 f0 = mix(vec3(0.04), baseColor, metallic);
 	return f0 + (vec3(1.0, 1.0, 1.0) - f0) * pow((1.0 - dotVH), 5.0);
 }
 
@@ -61,7 +63,7 @@ vec3 Specular_CookTorrance(float D, vec3 F, float G, float dotNL, float dotNV)
 }
 
 
-vec3 BRDF(vec3 N, vec3 L, vec3 V, vec3 baseColor, vec3 f0, float roughness)
+vec3 BRDF(vec3 N, vec3 L, vec3 V, vec3 baseColor, float metallic, float roughness)
 {
 	vec3 H = normalize(V + L);
 	float dotNL = dot(N, L);
@@ -74,7 +76,7 @@ vec3 BRDF(vec3 N, vec3 L, vec3 V, vec3 baseColor, vec3 f0, float roughness)
 
 	//Specular BRDF
 	float D = D_GGX(roughness, dotNH);
-	vec3 F = F_Schlick(f0, dotVH);
+	vec3 F = F_Schlick(baseColor, metallic, dotVH);
 	float G = G_SchlickGGX(roughness, dotNL, dotNV);
 
 	vec3 BRDF_Specular = Specular_CookTorrance(D, F, G, dotNL, dotNV);
@@ -89,8 +91,8 @@ void main()
 	vec3 Light = normalize(lightUBO.position - inPosition);
 	vec3 View = normalize(vec3(0.f, 0.f, 0.f) - inPosition); //视图空间中摄像机位于原点
 
-
-
+    vec3 color = BRDF(inNormal, Light, View, materialUBO.baseColor, materialUBO.metallic, materialUBO.roughness);
+    color = pow(color, vec3(1.0 / GAMMA));
 
 	outColor = vec4(1.f);
 }
