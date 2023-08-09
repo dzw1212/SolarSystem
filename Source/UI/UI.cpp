@@ -153,30 +153,49 @@ void UI::Draw()
     }
     ImGui::End();
 
-    ImGui::Begin("Blinn Phong");
-    if (ImGui::CollapsingHeader("Point Light", ImGuiTreeNodeFlags_DefaultOpen))
-    {
-        auto pLight = m_pRenderer->GetBlinnPhongPointLight();
-        ImGui::SeparatorText("Color");
+    //ImGui::Begin("Blinn Phong");
+    //if (ImGui::CollapsingHeader("Point Light", ImGuiTreeNodeFlags_DefaultOpen))
+    //{
+    //    auto pLight = m_pRenderer->GetBlinnPhongPointLight();
+    //    ImGui::SeparatorText("Color");
 
-        ImGui::ColorEdit4("Color", (float*)&(pLight->color), ImGuiColorEditFlags_NoOptions | ImGuiColorEditFlags_NoInputs);
-        
-        ImGui::SeparatorText("Attenuation");
-        ImGui::DragFloat("Constant", &pLight->fConstantAttenuation, 0.1f, 1.f, 100.f, "%.1f");
-        ImGui::DragFloat("Linear", &pLight->fLinearAttenuation, 0.1f, 0.f, 100.f, "%.1f");
-        ImGui::DragFloat("Quadratic", &pLight->fQuadraticAttenuation, 0.1f, 0.f, 100.f, "%.1f");
-    }
-    if (ImGui::CollapsingHeader("Material", ImGuiTreeNodeFlags_DefaultOpen))
-    {
-        auto pMaterial = m_pRenderer->GetBlinnPhongMaterial();
-        ImGui::ColorEdit4("Ambient", (float*)&(pMaterial->ambientCoefficient), ImGuiColorEditFlags_NoOptions | ImGuiColorEditFlags_NoInputs);
-        ImGui::ColorEdit4("Diffuse", (float*)&(pMaterial->diffuseCoefficient), ImGuiColorEditFlags_NoOptions | ImGuiColorEditFlags_NoInputs);
-        ImGui::ColorEdit4("Specular", (float*)&(pMaterial->specularCoefficient), ImGuiColorEditFlags_NoOptions | ImGuiColorEditFlags_NoInputs);
-        ImGui::DragFloat("Shininess", &pMaterial->fShininess, 0.1f, 0.f, 100.f, "%.1f");
-    }
+    //    ImGui::ColorEdit4("Color", (float*)&(pLight->color), ImGuiColorEditFlags_NoOptions | ImGuiColorEditFlags_NoInputs);
+    //    
+    //    ImGui::SeparatorText("Attenuation");
+    //    ImGui::DragFloat("Constant", &pLight->fConstantAttenuation, 0.1f, 1.f, 100.f, "%.1f");
+    //    ImGui::DragFloat("Linear", &pLight->fLinearAttenuation, 0.1f, 0.f, 100.f, "%.1f");
+    //    ImGui::DragFloat("Quadratic", &pLight->fQuadraticAttenuation, 0.1f, 0.f, 100.f, "%.1f");
+    //}
+    //if (ImGui::CollapsingHeader("Material", ImGuiTreeNodeFlags_DefaultOpen))
+    //{
+    //    auto pMaterial = m_pRenderer->GetBlinnPhongMaterial();
+    //    ImGui::ColorEdit4("Ambient", (float*)&(pMaterial->ambientCoefficient), ImGuiColorEditFlags_NoOptions | ImGuiColorEditFlags_NoInputs);
+    //    ImGui::ColorEdit4("Diffuse", (float*)&(pMaterial->diffuseCoefficient), ImGuiColorEditFlags_NoOptions | ImGuiColorEditFlags_NoInputs);
+    //    ImGui::ColorEdit4("Specular", (float*)&(pMaterial->specularCoefficient), ImGuiColorEditFlags_NoOptions | ImGuiColorEditFlags_NoInputs);
+    //    ImGui::DragFloat("Shininess", &pMaterial->fShininess, 0.1f, 0.f, 100.f, "%.1f");
+    //}
+    //ImGui::End();
 
-    //ImGui::ShowDemoWindow();
+    //ImGui::Begin("PBR");
+    //if (ImGui::CollapsingHeader("Point Light", ImGuiTreeNodeFlags_DefaultOpen))
+    //{
+    //    auto pLight = m_pRenderer->GetPBRPointLight();
+    //    ImGui::SeparatorText("Color");
 
+    //    ImGui::ColorEdit4("Color", (float*)&(pLight->color), ImGuiColorEditFlags_NoOptions | ImGuiColorEditFlags_NoInputs);
+
+    //    ImGui::SeparatorText("Attenuation");
+    //    ImGui::DragFloat("Constant", &pLight->fConstantAttenuation, 0.1f, 1.f, 100.f, "%.1f");
+    //    ImGui::DragFloat("Linear", &pLight->fLinearAttenuation, 0.1f, 0.f, 100.f, "%.1f");
+    //    ImGui::DragFloat("Quadratic", &pLight->fQuadraticAttenuation, 0.1f, 0.f, 100.f, "%.1f");
+    //}
+    //if (ImGui::CollapsingHeader("Material", ImGuiTreeNodeFlags_DefaultOpen))
+    //{
+    //    auto pMaterial = m_pRenderer->GetPBRMaterial();
+    //    ImGui::ColorEdit3("BaseColor", (float*)&(pMaterial->baseColor), ImGuiColorEditFlags_NoOptions | ImGuiColorEditFlags_NoInputs);
+    //    ImGui::DragFloat("Metallic", &pMaterial->fMetallic, 0.001f, 0.f, 1.f, "%.1f");
+    //    ImGui::DragFloat("Roughness", &pMaterial->fRoughness, 0.001f, 0.f, 1.f, "%.1f");
+    //}
     ImGui::End();
 }
 

@@ -193,8 +193,8 @@ private:
 	bool CheckFormatHasStencilComponent(VkFormat format);
 	void ChangeImageLayout(VkImage image, VkFormat format, UINT uiMipLevelCount, UINT uiLayerCount, UINT uiFaceCount, VkImageLayout oldLayout, VkImageLayout newLayout);
 	void TransferImageDataByStageBuffer(void* pData, VkDeviceSize imageSize, VkImage& image, UINT uiWidth, UINT uiHeight, DZW_VulkanWrap::Texture& texture, ktxTexture* pKtxTexture);
-	//void CreateTextureImageAndFillData();
-	//void CreateTextureImageView();
+	void TransferImageDataByStageBuffer(void* pData, VkDeviceSize imageSize, VkImage& image, UINT uiWidth, UINT uiHeight);
+	
 
 	void CreateDescriptorSetLayout();
 	void CreateDescriptorPool();
@@ -285,6 +285,10 @@ public:
 
 	DZW_LightWrap::BlinnPhongPointLight* GetBlinnPhongPointLight() { return &m_BlinnPhongPointLight; }
 	DZW_MaterialWrap::BlinnPhongMaterial* GetBlinnPhongMaterial() { return &m_BlinnPhongMaterial; }
+
+	DZW_LightWrap::PBRPointLight* GetPBRPointLight() { return &m_PBRPointLight; }
+	DZW_MaterialWrap::PBRMaterial* GetPBRMaterial() { return &m_PBRMaterial; }
+
 public:
 	struct SkyboxUniformBufferObject
 	{
@@ -591,7 +595,7 @@ private:
 	VkPipeline m_EllipseGraphicPipeline;
 
 	//Blinn-Phong
-	bool m_bEnableBlinnPhong = true;
+	bool m_bEnableBlinnPhong = false;
 	DZW_MaterialWrap::BlinnPhongMaterial m_BlinnPhongMaterial;
 	DZW_LightWrap::BlinnPhongPointLight m_BlinnPhongPointLight;
 
@@ -619,7 +623,7 @@ private:
 	VkPipeline m_BlinnPhongGraphicPipeline;
 
 	//PBR
-	bool m_bEnablePBR = true;
+	bool m_bEnablePBR = false;
 	DZW_MaterialWrap::PBRMaterial m_PBRMaterial;
 	DZW_LightWrap::PBRPointLight m_PBRPointLight;
 

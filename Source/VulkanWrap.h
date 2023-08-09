@@ -211,6 +211,22 @@ namespace DZW_VulkanWrap
 			std::vector<Node> vecNodes;
 		};
 
+		struct Image
+		{
+			std::string strName;
+			UINT uiWidth;
+			UINT uiHeight;
+			VkImage Image;
+			VkImageView ImageView;
+			VkDeviceMemory Memory;
+		};
+
+		struct Texture
+		{
+			UINT uiImageIdx;
+			VkSampler m_Sampler;
+		};
+
 	public:
 		bool IsGLTF() { return m_Filepath.extension() == ".gltf" || m_Filepath.extension() == ".glb"; }
 		bool IsOBJ() { return m_Filepath.extension() == ".obj"; }
@@ -227,5 +243,8 @@ namespace DZW_VulkanWrap
 		std::vector<UINT> m_vecIndices;
 		VkBuffer m_IndexBuffer;
 		VkDeviceMemory m_IndexBufferMemory;
+
+		std::vector<Image> m_vecImages;
+		std::vector<Texture> m_vecTextures;
 	};
 }

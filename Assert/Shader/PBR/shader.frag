@@ -28,6 +28,13 @@ layout (binding = 2) uniform MaterialUniformBufferObject
 
 //----------------------------------------------------------
 
+vec3 Lambertian_Diffuse(vec3 baseColor, vec3 F)
+{
+    vec3 Ks = F;
+    vec3 Kd = vec3(1.0) - Ks;
+    return Kd * baseColor / PI;
+}
+
 vec3 Diffuse_Disney(vec3 baseColor, float roughness, float dotNL, float dotNV, float dotVH)
 {
 	float FD90 = 0.5 + 2.0 * roughness * dotVH * dotVH;
@@ -71,17 +78,18 @@ vec3 BRDF(vec3 N, vec3 L, vec3 V, vec3 baseColor, float metallic, float roughnes
 	float dotVH = clamp(dot(V, H), 0.0, 1.0);
 	float dotNH = clamp(dot(N, H), 0.0, 1.0);
 
-	//Diffuse BRDF
-	vec3 BRDF_Diffuse = Diffuse_Disney(baseColor, roughness, dotNL, dotNV, dotVH);
+    roughness = max(roughness, 0.05);
 
 	//Specular BRDF
 	float D = D_GGX(roughness, dotNH);
 	vec3 F = F_Schlick(baseColor, metallic, dotVH);
 	float G = G_SchlickGGX(roughness, dotNL, dotNV);
-
 	vec3 BRDF_Specular = Specular_CookTorrance(D, F, G, dotNL, dotNV);
 
-	return BRDF_Specular;
+    //Diffuse BRDF
+	vec3 BRDF_Diffuse = Diffuse_Disney(baseColor, roughness, dotNL, dotNV, dotVH);
+
+	return BRDF_Diffuse + BRDF_Specular;
 }
 
 //----------------------------------------------------------
@@ -91,31 +99,16 @@ void main()
 	vec3 Light = normalize(lightUBO.position - inPosition);
 	vec3 View = normalize(vec3(0.f, 0.f, 0.f) - inPosition); //视图空间中摄像机位于原点
 
-	// float lightDistance = distance(inPosition, lightUBO.position);
-    // float attenuationIntensify = lightUBO.intensify / (lightUBO.constant + lightUBO.linear * lightDistance + lightUBO.quadratic * lightDistance * lightDistance);
+	float lightDistance = distance(inPosition, lightUBO.position);
+    float attenuationIntensify = lightUBO.intensify / (lightUBO.constant + lightUBO.linear * lightDistance + lightUBO.quadratic * lightDistance * lightDistance);
 
-	// float dotNL = clamp(dot(inNormal, Light), 0.0, 1.0);
-    // vec3 color = BRDF(inNormal, Light, View, materialUBO.baseColor, materialUBO.metallic, materialUBO.roughness) * dotNL * lightUBO.color * 10.f;
-    // color += vec3(materialUBO.ao);
-	// color = pow(color, vec3(1.0 / GAMMA));
+    vec3 lightColor = lightUBO.color * attenuationIntensify;
 
-	vec3 L = Light;
-	vec3 V = View;
-	vec3 N = inNormal;
-	vec3 H = normalize(View + Light);
-	float dotNL = clamp(dot(N, L), 0.0, 1.0);
-	float dotNV = clamp(dot(N, V), 0.0, 1.0);
-	float dotVH = clamp(dot(V, H), 0.0, 1.0);
-	float dotNH = clamp(dot(N, H), 0.0, 1.0);
+	float dotNL = clamp(dot(inNormal, Light), 0.0, 1.0);
+    vec3 color = BRDF(inNormal, Light, View, materialUBO.baseColor, materialUBO.metallic, materialUBO.roughness) * dotNL * lightUBO.color;
+    color += materialUBO.baseColor * lightUBO.color * 0.01;
+    color += vec3(materialUBO.ao);
+	color = pow(color, vec3(1.0 / GAMMA));
 
-	vec3 baseColor = materialUBO.baseColor;
-	float metallic = materialUBO.metallic;
-	float roughness = max(materialUBO.roughness, 0.05);
-
-	float D = D_GGX(roughness, dotNH);
-	vec3 F = F_Schlick(baseColor, metallic, dotVH);
-	float G = G_SchlickGGX(roughness, dotNL, dotNV);
-
-	vec3 color = vec3(D);
 	outColor = vec4(color, 1.0);
 }
