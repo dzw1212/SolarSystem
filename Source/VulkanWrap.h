@@ -195,14 +195,16 @@ namespace DZW_VulkanWrap
 
 		struct Node
 		{
-			Node* parent = nullptr;
-			std::vector<Node*> vecChildren;
-			Mesh mesh;
-			int nIndex = -1;
+			Node* m_Parent = nullptr;
+			int m_nIndex = -1;
+			std::vector<Node*> m_vecChildren;
+
+			Mesh m_Mesh;
+			void LoadMesh(Model& model, const tinygltf::Model& gltfModel);
 
 			bool HaveMesh()
 			{
-				return mesh.nIndex >= 0;
+				return m_Mesh.nIndex != -1;
 			}
 		};
 
@@ -216,7 +218,7 @@ namespace DZW_VulkanWrap
 			std::string strName;
 			UINT uiWidth;
 			UINT uiHeight;
-			VkImage Image;
+			VkImage m_Image;
 			VkImageView ImageView;
 			VkDeviceMemory Memory;
 		};
@@ -224,12 +226,14 @@ namespace DZW_VulkanWrap
 		struct Texture
 		{
 			UINT uiImageIdx;
-			VkSampler m_Sampler;
+			VkSampler Sampler;
 		};
 
 	public:
 		bool IsGLTF() { return m_Filepath.extension() == ".gltf" || m_Filepath.extension() == ".glb"; }
 		bool IsOBJ() { return m_Filepath.extension() == ".obj"; }
+
+		void LoadNode(Node* parentNode, int nNodeIdx, const tinygltf::Model& gltfModel);
 
 	public:
 		std::vector<Scene> m_vecScenes;

@@ -3,6 +3,8 @@
 #include <unordered_map>
 #include <filesystem>
 
+#include "tiny_gltf.h"
+
 namespace DZW_VulkanUtils
 {
 	//std::unordered_map<VkMemoryPropertyFlags, std::string> g_mapMemoryPropertyFlagToName = {
@@ -66,10 +68,11 @@ namespace DZW_VulkanUtils
 	//	return strName;
 	//}
 
-	
-
 	std::string GetPhysicalDeviceTypeName(VkPhysicalDeviceType eType);
 
 	std::vector<char> ReadShaderFile(const std::filesystem::path& filepath);
 	VkShaderModule CreateShaderModule(VkDevice device, const std::vector<char>& vecBytecode);
+
+	std::tuple<VkFilter, VkFilter, VkSamplerMipmapMode> TinyGltfFilterToVulkan(int tinygltfMinFilter, int tinygltfMagFilter);
+	VkSamplerAddressMode TinyGltfWrapModeToVulkan(int tinygltfWrapMode);
 }

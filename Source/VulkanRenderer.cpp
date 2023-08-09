@@ -97,7 +97,7 @@ void VulkanRenderer::Init()
 	
 	CreateSyncObjects();
 
-	LoadModel("./Assert/Model/sphere.gltf", m_Model);
+	LoadModel("./Assert/Model/sphere.obj", m_Model);
 	LoadTexture("./Assert/Texture/solarsystem_array_rgba8.ktx", m_Texture);
 	CreateShader();
 	CreateUniformBuffers();
@@ -141,7 +141,7 @@ void VulkanRenderer::Init()
 
 	//BlinnPhong
 	InitBlinnPhongLightMaterialInfo();
-	LoadModel("./Assert/Model/sphere.gltf", m_BlinnPhongModel);
+	LoadModel("./Assert/Model/sphere.obj", m_BlinnPhongModel);
 	CreateBlinnPhongShaderModule();
 	CreateBlinnPhongMVPUniformBuffers();
 	CreateBlinnPhongLightUniformBuffers();
@@ -154,7 +154,7 @@ void VulkanRenderer::Init()
 
 	//PBR
 	InitPBRLightMaterialInfo();
-	LoadModel("./Assert/Model/sphere.gltf", m_PBRModel);
+	LoadModel("./Assert/Model/sphere.obj", m_PBRModel);
 	CreatePBRShaderModule();
 	CreatePBRMVPUniformBuffers();
 	CreatePBRLightUniformBuffers();
@@ -1520,6 +1520,44 @@ void VulkanRenderer::TransferImageDataByStageBuffer(void* pData, VkDeviceSize im
 		region.imageExtent = { uiWidth, uiHeight, 1 };
 		vkCmdCopyBufferToImage(singleTimeCommandBuffer, stagingBuffer, image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region);
 	}
+
+	EndSingleTimeCommand(singleTimeCommandBuffer);
+
+	vkDestroyBuffer(m_LogicalDevice, stagingBuffer, nullptr);
+	vkFreeMemory(m_LogicalDevice, stagingBufferMemory, nullptr);
+}
+
+void VulkanRenderer::TransferImageDataByStageBuffer(void* pData, VkDeviceSize imageSize, VkImage& image, UINT uiWidth, UINT uiHeight)
+{
+	VkBuffer stagingBuffer;
+	VkDeviceMemory stagingBufferMemory;
+
+	CreateBufferAndBindMemory(imageSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+		VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+		stagingBuffer, stagingBufferMemory);
+
+	void* imageData;
+	vkMapMemory(m_LogicalDevice, stagingBufferMemory, 0, imageSize, 0, (void**)&imageData);
+	memcpy(imageData, pData, static_cast<size_t>(imageSize));
+	vkUnmapMemory(m_LogicalDevice, stagingBufferMemory);
+
+	VkCommandBuffer singleTimeCommandBuffer = BeginSingleTimeCommand();
+
+	VkBufferImageCopy region{};
+	//指定要复制的数据在buffer中的偏移量
+	region.bufferOffset = 0;
+	//指定数据在memory中的存放方式，用于对齐
+	//若都为0，则数据在memory中会紧凑存放
+	region.bufferRowLength = 0;
+	region.bufferImageHeight = 0;
+	//指定数据被复制到image的哪一部分
+	region.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+	region.imageSubresource.mipLevel = 0;
+	region.imageSubresource.baseArrayLayer = 0;
+	region.imageSubresource.layerCount = 1;
+	region.imageOffset = { 0, 0, 0 };
+	region.imageExtent = { uiWidth, uiHeight, 1 };
+	vkCmdCopyBufferToImage(singleTimeCommandBuffer, stagingBuffer, image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region);
 
 	EndSingleTimeCommand(singleTimeCommandBuffer);
 
@@ -3516,8 +3554,6 @@ void VulkanRenderer::LoadTexture(const std::filesystem::path& filepath, DZW_Vulk
 		texture.m_uiFaceNum,
 		VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
 		VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
-	
-	//generateMipmaps(m_TextureImage, VK_FORMAT_R8G8B8A8_SRGB, nTexWidth, nTexHeight, m_uiMipmapLevel);
 
 	texture.m_ImageView = CreateImageView(texture.m_Image, 
 		VK_FORMAT_R8G8B8A8_SRGB,	//格式为sRGB
@@ -3561,7 +3597,7 @@ void VulkanRenderer::LoadTexture(const std::filesystem::path& filepath, DZW_Vulk
 	createInfo.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
 	createInfo.mipLodBias = 0.f;
 	createInfo.minLod = 0.f;
-	createInfo.maxLod = static_cast<float>(m_Texture.m_uiMipLevelNum);
+	createInfo.maxLod = static_cast<float>(texture.m_uiMipLevelNum);
 
 	VULKAN_ASSERT(vkCreateSampler(m_LogicalDevice, &createInfo, nullptr, &texture.m_Sampler), "Create texture sampler failed");
 }
@@ -3589,26 +3625,45 @@ void VulkanRenderer::LoadOBJ(DZW_VulkanWrap::Model& model)
 	model.m_vecVertices.clear();
 	model.m_vecIndices.clear();
 
-	std::unordered_map<Vertex3D, uint32_t> mapUniqueVertices;
-
-	for (const auto& shape : vecShapes)
+	for (size_t s = 0; s < vecShapes.size(); s++)
 	{
-		for (const auto& index : shape.mesh.indices)
-		{
-			Vertex3D vert{};
-			vert.pos = {
-				attr.vertices[3 * static_cast<uint64_t>(index.vertex_index) + 0],
-				attr.vertices[3 * static_cast<uint64_t>(index.vertex_index) + 1],
-				attr.vertices[3 * static_cast<uint64_t>(index.vertex_index) + 2],
-			};
-			vert.texCoord = {
-				attr.texcoords[2 * static_cast<uint64_t>(index.texcoord_index) + 0],
-				1.f - attr.texcoords[2 * static_cast<uint64_t>(index.texcoord_index) + 1],
-			};
-			vert.color = glm::vec3(1.f, 1.f, 1.f);
+		size_t index_offset = 0;
 
-			model.m_vecVertices.push_back(vert);
-			model.m_vecIndices.push_back(static_cast<uint32_t>(model.m_vecIndices.size()));
+		// 遍历所有面
+		for (size_t f = 0; f < vecShapes[s].mesh.num_face_vertices.size(); f++)
+		{
+			int fv = vecShapes[s].mesh.num_face_vertices[f];
+
+			// 遍历所有顶点
+			for (size_t v = 0; v < fv; v++)
+			{
+				tinyobj::index_t idx = vecShapes[s].mesh.indices[index_offset + v];
+				Vertex3D vert{};
+
+				vert.pos = {
+					attr.vertices[3 * static_cast<uint64_t>(idx.vertex_index) + 0],
+					attr.vertices[3 * static_cast<uint64_t>(idx.vertex_index) + 1],
+					attr.vertices[3 * static_cast<uint64_t>(idx.vertex_index) + 2],
+				};
+
+				vert.texCoord = {
+					attr.texcoords[2 * static_cast<uint64_t>(idx.texcoord_index) + 0],
+					1.f - attr.texcoords[2 * static_cast<uint64_t>(idx.texcoord_index) + 1],
+				};
+
+				vert.normal = {
+					attr.normals[3 * static_cast<uint64_t>(idx.normal_index) + 0],
+					attr.normals[3 * static_cast<uint64_t>(idx.normal_index) + 1],
+					attr.normals[3 * static_cast<uint64_t>(idx.normal_index) + 2],
+				};
+				
+				vert.color = { 1.f, 1.f, 1.f };
+				
+				model.m_vecVertices.push_back(vert);
+				model.m_vecIndices.push_back(static_cast<uint32_t>(model.m_vecIndices.size()));
+			}
+
+			index_offset += fv;
 		}
 	}
 }
@@ -3644,108 +3699,8 @@ void VulkanRenderer::LoadGLTF(DZW_VulkanWrap::Model& model)
 		const tinygltf::Scene& gltfScene = gltfModel.scenes[i];
 		for (size_t j = 0; j < gltfScene.nodes.size(); ++j)
 		{
-			DZW_VulkanWrap::Model::Node node;
-			node.nIndex = gltfScene.nodes[j];
-
-			const tinygltf::Node& gltfNode = gltfModel.nodes[node.nIndex];
-			DZW_VulkanWrap::Model::Mesh mesh;
-			mesh.nIndex = gltfNode.mesh;
-			if (mesh.nIndex >= 0)
-			{
-				const tinygltf::Mesh& gltfMesh = gltfModel.meshes[mesh.nIndex];
-				for (size_t k = 0; k < gltfMesh.primitives.size(); ++k)
-				{
-					uint32_t vertexStart = static_cast<uint32_t>(model.m_vecVertices.size());
-
-					DZW_VulkanWrap::Model::Primitive primitive;
-					primitive.uiFirstIndex = static_cast<uint32_t>(model.m_vecIndices.size());
-
-
-					const tinygltf::Primitive& gltfPrimitive = gltfMesh.primitives[k];
-
-					//获取vertex数据
-					//pos
-					const int positionAccessorIndex = gltfPrimitive.attributes.find("POSITION")->second;
-					const tinygltf::Accessor& positionAccessor = gltfModel.accessors[positionAccessorIndex];
-					const tinygltf::BufferView& positionBufferView = gltfModel.bufferViews[positionAccessor.bufferView];
-					const tinygltf::Buffer& positionBuffer = gltfModel.buffers[positionBufferView.buffer];
-					const float* positions = reinterpret_cast<const float*>(&(positionBuffer.data[positionBufferView.byteOffset + positionAccessor.byteOffset]));
-
-					//normal
-					const int normalAccessorIndex = gltfPrimitive.attributes.find("NORMAL")->second;
-					const tinygltf::Accessor& normalAccessor = gltfModel.accessors[normalAccessorIndex];
-					const tinygltf::BufferView& normalBufferView = gltfModel.bufferViews[normalAccessor.bufferView];
-					const tinygltf::Buffer& normalBuffer = gltfModel.buffers[normalBufferView.buffer];
-					const float* normals = reinterpret_cast<const float*>(&(normalBuffer.data[normalBufferView.byteOffset + normalAccessor.byteOffset]));
-
-					//texcoord
-					const int texcoordAccessorIndex = gltfPrimitive.attributes.find("TEXCOORD_0")->second;
-					const tinygltf::Accessor& texcoordAccessor = gltfModel.accessors[texcoordAccessorIndex];
-					const tinygltf::BufferView& texcoordBufferView = gltfModel.bufferViews[texcoordAccessor.bufferView];
-					const tinygltf::Buffer& texcoordBuffer = gltfModel.buffers[texcoordBufferView.buffer];
-					const float* texcoords = reinterpret_cast<const float*>(&(texcoordBuffer.data[texcoordBufferView.byteOffset + texcoordAccessor.byteOffset]));
-
-					for (size_t v = 0; v < positionAccessor.count; v++)
-					{
-						Vertex3D vert{};
-						vert.pos = glm::make_vec3(&positions[v * 3]);
-						vert.normal = glm::normalize(glm::vec3(normals ? glm::make_vec3(&normals[v * 3]) : glm::vec3(0.0f)));
-						vert.texCoord = texcoords ? glm::make_vec2(&texcoords[v * 2]) : glm::vec3(0.0f);
-						vert.color = glm::vec3(1.0f);
-						model.m_vecVertices.push_back(vert);
-					}
-
-					//获取Index数据
-					if (gltfPrimitive.indices >= 0)
-					{
-						UINT uiIndexCount = 0;
-						const int indicesAccessorIndex = gltfPrimitive.indices;
-						const tinygltf::Accessor& indicesAccessor = gltfModel.accessors[indicesAccessorIndex];
-						const tinygltf::BufferView& indicesBufferView = gltfModel.bufferViews[indicesAccessor.bufferView];
-						const tinygltf::Buffer& indicesBuffer = gltfModel.buffers[indicesBufferView.buffer];
-
-						primitive.uiIndexCount += indicesAccessor.count;
-
-						switch (indicesAccessor.componentType) {
-						case TINYGLTF_PARAMETER_TYPE_UNSIGNED_INT: {
-							uint32_t* buf = new uint32_t[indicesAccessor.count];
-							memcpy(buf, &indicesBuffer.data[indicesAccessor.byteOffset + indicesBufferView.byteOffset], indicesAccessor.count * sizeof(uint32_t));
-							for (size_t index = 0; index < indicesAccessor.count; index++) {
-								model.m_vecIndices.push_back(buf[index] + vertexStart);
-							}
-							delete[] buf;
-							break;
-						}
-						case TINYGLTF_PARAMETER_TYPE_UNSIGNED_SHORT: {
-							uint16_t* buf = new uint16_t[indicesAccessor.count];
-							memcpy(buf, &indicesBuffer.data[indicesAccessor.byteOffset + indicesBufferView.byteOffset], indicesAccessor.count * sizeof(uint16_t));
-							for (size_t index = 0; index < indicesAccessor.count; index++) {
-								model.m_vecIndices.push_back(buf[index] + vertexStart);
-							}
-							delete[] buf;
-							break;
-						}
-						case TINYGLTF_PARAMETER_TYPE_UNSIGNED_BYTE: {
-							uint8_t* buf = new uint8_t[indicesAccessor.count];
-							memcpy(buf, &indicesBuffer.data[indicesAccessor.byteOffset + indicesBufferView.byteOffset], indicesAccessor.count * sizeof(uint8_t));
-							for (size_t index = 0; index < indicesAccessor.count; index++) {
-								model.m_vecIndices.push_back(buf[index] + vertexStart);
-							}
-							delete[] buf;
-							break;
-						}
-						default:
-							ASSERT(false, "Unsupport index component type");
-							return;
-						}
-					}
-
-					mesh.vecPrimitives.push_back(primitive);
-				}
-			}
-
-			node.mesh = mesh;
-			scene.vecNodes.push_back(node);
+			auto& headNode = model.LoadNode(nullptr, gltfScene.nodes[j], gltfModel);
+			scene.vecNodes.push_back(headNode);
 		}
 		model.m_vecScenes.push_back(scene);
 	}
@@ -3798,24 +3753,89 @@ void VulkanRenderer::LoadGLTF(DZW_VulkanWrap::Model& model)
 			VK_IMAGE_TILING_OPTIMAL,
 			VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
 			VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
-			image.Image, image.Memory);
+			image.m_Image, image.Memory);
 
-		//copy之前，将layout从初始的undefined转为transfer dst
-		ChangeImageLayout(image.Image,
-			VK_FORMAT_R8G8B8A8_SRGB,				//image format
-			1,										//mipmap levels
-			1,										//layers
-			1,										//faces
-			VK_IMAGE_LAYOUT_UNDEFINED,				//src layout
-			VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);	//dst layout
+		ChangeImageLayout(image.m_Image,
+			VK_FORMAT_R8G8B8A8_SRGB,
+			1, 1, 1,
+			VK_IMAGE_LAYOUT_UNDEFINED,
+			VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
 
-		TransferImageDataByStageBuffer(imageBuffer, imageBufferSize, image.Image, image.uiWidth, image.uiHeight, texture, nullptr);
+		TransferImageDataByStageBuffer(imageBuffer, imageBufferSize, image.m_Image, image.uiWidth, image.uiHeight);
 
+		if (bDeleteBuffer)
+			delete[] imageBuffer;
 
+		ChangeImageLayout(image.m_Image,
+			VK_FORMAT_R8G8B8A8_SRGB,
+			1, 1, 1,
+			VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+			VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+
+		image.ImageView = CreateImageView(image.m_Image,
+			VK_FORMAT_R8G8B8A8_SRGB,
+			VK_IMAGE_ASPECT_COLOR_BIT,
+			1, 1, 1);
 	}
 
-	auto ttt = gltfModel.textures[0];
-	gltfModel.samplers[0].
+	model.m_vecTextures.resize(gltfModel.textures.size());
+	for (size_t i = 0; i < gltfModel.textures.size(); ++i)
+	{
+		tinygltf::Texture& gltfTexture = gltfModel.textures[i];
+		auto& texture = model.m_vecTextures[i];
+		texture.uiImageIdx = gltfTexture.source;
+
+		VkFilter minFilter = VK_FILTER_LINEAR;
+		VkFilter magFilter = VK_FILTER_LINEAR;
+		VkSamplerMipmapMode mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
+		VkSamplerAddressMode addressModeU = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+		VkSamplerAddressMode addressModeV = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+		if (gltfTexture.sampler != -1)
+		{
+			tinygltf::Sampler& gltfSampler = gltfModel.samplers[gltfTexture.sampler];
+			std::tie(minFilter, magFilter, mipmapMode) = DZW_VulkanUtils::TinyGltfFilterToVulkan(gltfSampler.minFilter, gltfSampler.magFilter);
+			addressModeU = DZW_VulkanUtils::TinyGltfWrapModeToVulkan(gltfSampler.wrapS);
+			addressModeV = DZW_VulkanUtils::TinyGltfWrapModeToVulkan(gltfSampler.wrapT);
+		}
+		
+		VkSamplerCreateInfo createInfo{};
+		createInfo.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
+		//设置过采样与欠采样时的采样方法，可以是nearest，linear，cubic等
+		createInfo.minFilter = minFilter;
+		createInfo.magFilter = magFilter;
+
+		//设置纹理采样超出边界时的寻址模式，可以是repeat，mirror，clamp to edge，clamp to border等
+		createInfo.addressModeU = addressModeU;
+		createInfo.addressModeV = addressModeV;
+		createInfo.addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+
+		//设置是否开启各向异性过滤，你的硬件不一定支持Anisotropy，需要确认硬件支持该preperty
+		createInfo.anisotropyEnable = VK_FALSE;
+		if (createInfo.anisotropyEnable == VK_TRUE)
+		{
+			auto& physicalDeviceProperties = m_mapPhysicalDeviceInfo.at(m_PhysicalDevice).properties;
+			createInfo.maxAnisotropy = physicalDeviceProperties.limits.maxSamplerAnisotropy;
+		}
+
+		//设置寻址模式为clamp to border时的填充颜色
+		createInfo.borderColor = VK_BORDER_COLOR_INT_OPAQUE_BLACK;
+
+		//如果为true，则坐标为[0, texWidth), [0, texHeight)
+		//如果为false，则坐标为传统的[0, 1), [0, 1)
+		createInfo.unnormalizedCoordinates = VK_FALSE;
+
+		//设置是否开启比较与对比较结果的操作，通常用于百分比邻近滤波（Shadow Map PCS）
+		createInfo.compareEnable = VK_FALSE;
+		createInfo.compareOp = VK_COMPARE_OP_ALWAYS;
+
+		//设置mipmap相关参数
+		createInfo.mipmapMode = mipmapMode;
+		createInfo.mipLodBias = 0.f;
+		createInfo.minLod = 0.f;
+		createInfo.maxLod = 0.f;
+
+		VULKAN_ASSERT(vkCreateSampler(m_LogicalDevice, &createInfo, nullptr, &texture.Sampler), "Create texture sampler failed");
+	}
 }
 
 void VulkanRenderer::LoadModel(const std::filesystem::path& filepath, DZW_VulkanWrap::Model& model)

@@ -52,4 +52,61 @@ namespace DZW_VulkanUtils
 
 		return shaderModule;
 	}
+	std::tuple<VkFilter, VkFilter, VkSamplerMipmapMode> TinyGltfFilterToVulkan(int tinygltfMinFilter, int tinygltfMagFilter)
+	{
+		VkFilter minFilter;
+		VkFilter magFilter;
+		VkSamplerMipmapMode mipmapMode;
+
+		switch (tinygltfMagFilter)
+		{
+		case TINYGLTF_TEXTURE_FILTER_NEAREST:
+			magFilter = VK_FILTER_NEAREST;
+			break;
+		case TINYGLTF_TEXTURE_FILTER_LINEAR:
+		case -1:
+		default:
+			magFilter = VK_FILTER_LINEAR;
+			break;
+		}
+
+		switch (tinygltfMinFilter)
+		{
+		case TINYGLTF_TEXTURE_FILTER_NEAREST:
+		case TINYGLTF_TEXTURE_FILTER_NEAREST_MIPMAP_LINEAR:
+			magFilter = VK_FILTER_NEAREST;
+			mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
+			break;
+		case TINYGLTF_TEXTURE_FILTER_NEAREST_MIPMAP_NEAREST:
+			magFilter = VK_FILTER_NEAREST;
+			mipmapMode = VK_SAMPLER_MIPMAP_MODE_NEAREST;
+			break;
+		case TINYGLTF_TEXTURE_FILTER_LINEAR_MIPMAP_NEAREST:
+			minFilter = VK_FILTER_LINEAR;
+			mipmapMode = VK_SAMPLER_MIPMAP_MODE_NEAREST;
+			break;
+		case TINYGLTF_TEXTURE_FILTER_LINEAR:
+		case -1:
+		case TINYGLTF_TEXTURE_FILTER_LINEAR_MIPMAP_LINEAR:
+		default:
+			minFilter = VK_FILTER_LINEAR;
+			mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
+			break;
+		}
+
+		return std::make_tuple(minFilter, magFilter, mipmapMode);
+	}
+	VkSamplerAddressMode TinyGltfWrapModeToVulkan(int tinygltfWrapMode)
+	{
+		switch (tinygltfWrapMode)
+		{
+		case TINYGLTF_TEXTURE_WRAP_CLAMP_TO_EDGE:
+			return VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+		case TINYGLTF_TEXTURE_WRAP_MIRRORED_REPEAT:
+			return VK_SAMPLER_ADDRESS_MODE_MIRRORED_REPEAT;
+		case TINYGLTF_TEXTURE_WRAP_REPEAT:
+		default:
+			return VK_SAMPLER_ADDRESS_MODE_REPEAT;
+		}
+	}
 }
