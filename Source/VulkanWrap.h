@@ -15,6 +15,8 @@
 #include "glm/gtc/matrix_transform.hpp"
 #include "glm/gtc/type_ptr.hpp"
 
+#include "tiny_gltf.h"
+
 struct Vertex3D
 {
 	glm::vec3 pos = { 0.f, 0.f, 0.f };
@@ -233,7 +235,7 @@ namespace DZW_VulkanWrap
 		bool IsGLTF() { return m_Filepath.extension() == ".gltf" || m_Filepath.extension() == ".glb"; }
 		bool IsOBJ() { return m_Filepath.extension() == ".obj"; }
 
-		void LoadNode(Node* parentNode, int nNodeIdx, const tinygltf::Model& gltfModel);
+		Node& LoadNode(Node* parentNode, int nNodeIdx, const tinygltf::Model& gltfModel);
 
 	public:
 		std::vector<Scene> m_vecScenes;
