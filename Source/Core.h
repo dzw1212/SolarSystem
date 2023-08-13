@@ -15,6 +15,7 @@
 
 using UCHAR = unsigned char;
 using UINT = uint32_t;
+using UINT64 = uint64_t;
 
 #define ASSERT(res, ...)\
 {\

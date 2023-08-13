@@ -49,6 +49,15 @@ void Camera::Tick()
 	else if (IsMouseButtonPressed(GLFW_MOUSE_BUTTON_2))
 		MouseZoom(delta.y);
 
+	if (IsKeyPressed(GLFW_KEY_W))
+		MouseZoom(2.f);
+	else if (IsKeyPressed(GLFW_KEY_A))
+		m_FocalPoint -= GetRightDirection() * 2.f;
+	else if (IsKeyPressed(GLFW_KEY_D))
+		m_FocalPoint += GetRightDirection() * 2.f;
+	else if (IsKeyPressed(GLFW_KEY_S))
+		MouseZoom(-2.f);
+
 	UpdateView();
 }
 void Camera::OnMouseScroll(double offsetX, double offsetY)
@@ -60,16 +69,16 @@ void Camera::OnMouseScroll(double offsetX, double offsetY)
 
 void Camera::OnKeyPress(int nKey)
 {
-	if (nKey == GLFW_KEY_W)
-		MouseZoom(2.f);
-	else if (nKey == GLFW_KEY_A)
-		m_FocalPoint -= GetRightDirection() * 2.f;
-	else if (nKey == GLFW_KEY_D)
-		m_FocalPoint += GetRightDirection() * 2.f;
-	else if (nKey == GLFW_KEY_S)
-		MouseZoom(-2.f);
+	//if (nKey == GLFW_KEY_W)
+	//	MouseZoom(2.f);
+	//else if (nKey == GLFW_KEY_A)
+	//	m_FocalPoint -= GetRightDirection() * 2.f;
+	//else if (nKey == GLFW_KEY_D)
+	//	m_FocalPoint += GetRightDirection() * 2.f;
+	//else if (nKey == GLFW_KEY_S)
+	//	MouseZoom(-2.f);
 
-	UpdateView();
+	//UpdateView();
 }
 
 void Camera::SetViewportSize(float fWidth, float fHeight)
@@ -149,7 +158,9 @@ float Camera::RotateSpeed() const
 }
 float Camera::ZoomSpeed() const
 {
-	float fDistance = std::max(m_fDistance * 0.2f, 0.f);
-	float fSpeed = std::min(fDistance * fDistance, 100.f);
-	return fSpeed;
+	//float fDistance = std::max(m_fDistance * 0.2f, 0.f);
+	//float fSpeed = std::min(fDistance * fDistance, 100.f);
+	//return fSpeed;
+
+	return 0.5f;
 }

@@ -17,6 +17,8 @@
 
 #include "tiny_gltf.h"
 
+class VulkanRenderer;
+
 struct Vertex3D
 {
 	glm::vec3 pos = { 0.f, 0.f, 0.f };
@@ -182,6 +184,47 @@ namespace DZW_VulkanWrap
 	class Model
 	{
 	public:
+		Model(VulkanRenderer* pRenderer, const std::filesystem::path& filepath)
+			: m_pRenderer(pRenderer), m_Filepath(filepath) {}
+		virtual ~Model() {}
+
+		enum class ModelType : UCHAR
+		{
+			MODEL_TYPE_OBJ,
+			MODEL_TYPE_GLTF,
+		};
+
+		virtual ModelType GetType() = 0;
+		virtual void Draw(VkCommandBuffer& commandBuffer, VkPipeline& pipeline, VkPipelineLayout& pipelineLayout, VkDescriptorSet& descriptorSet) = 0;
+	public:
+		VulkanRenderer* m_pRenderer = nullptr;
+		std::filesystem::path m_Filepath;
+	};
+
+	class OBJModel : public Model
+	{
+	public:
+		OBJModel(VulkanRenderer* pRenderer, const std::filesystem::path& filepath);
+		virtual ~OBJModel();
+
+		virtual ModelType GetType() { return ModelType::MODEL_TYPE_OBJ; }
+
+		virtual void Draw(VkCommandBuffer& commandBuffer, VkPipeline& pipeline, VkPipelineLayout& pipelineLayout, VkDescriptorSet& descriptorSet);
+	private:
+		std::vector<Vertex3D> m_vecVertices;
+		std::vector<UINT> m_vecIndices;
+	private: 
+		//vulkan resource, need release
+		VkBuffer m_VertexBuffer = VK_NULL_HANDLE;
+		VkDeviceMemory m_VertexBufferMemory = VK_NULL_HANDLE;
+
+		VkBuffer m_IndexBuffer = VK_NULL_HANDLE;
+		VkDeviceMemory m_IndexBufferMemory = VK_NULL_HANDLE;
+	};
+
+	class GLTFModel : public Model
+	{
+	public:
 		struct Primitive 
 		{
 			UINT uiFirstIndex = 0;
@@ -193,13 +236,15 @@ namespace DZW_VulkanWrap
 		{
 			std::vector<Primitive> vecPrimitives;
 			int nIndex = -1;
+
+			
 		};
 
 		struct Node
 		{
 			Node* m_Parent = nullptr;
 			int m_nIndex = -1;
-			std::vector<Node*> m_vecChildren;
+			std::vector<Node> m_vecChildren;
 
 			Mesh m_Mesh;
 			void LoadMesh(Model& model, const tinygltf::Model& gltfModel);
@@ -217,40 +262,48 @@ namespace DZW_VulkanWrap
 
 		struct Image
 		{
-			std::string strName;
-			UINT uiWidth;
-			UINT uiHeight;
+			std::string m_strName;
+			UINT m_uiWidth;
+			UINT m_uiHeight;
 			VkImage m_Image;
-			VkImageView ImageView;
-			VkDeviceMemory Memory;
+			VkImageView m_ImageView;
+			VkDeviceMemory m_Memory;
+		};
+
+		struct Sampler
+		{
+			VkSampler m_Sampler;
 		};
 
 		struct Texture
 		{
-			UINT uiImageIdx;
-			VkSampler Sampler;
+			int m_nImageIdx;
+			int m_nSamplerIdx;
 		};
 
 	public:
-		bool IsGLTF() { return m_Filepath.extension() == ".gltf" || m_Filepath.extension() == ".glb"; }
-		bool IsOBJ() { return m_Filepath.extension() == ".obj"; }
+		GLTFModel(VulkanRenderer* pRenderer, const std::filesystem::path& filepath);
+		virtual ~GLTFModel();
 
-		Node& LoadNode(Node* parentNode, int nNodeIdx, const tinygltf::Model& gltfModel);
+		virtual ModelType GetType() { return ModelType::MODEL_TYPE_GLTF; }
 
-	public:
+		virtual void Draw(VkCommandBuffer& commandBuffer, VkPipeline& pipeline, VkPipelineLayout& pipelineLayout, VkDescriptorSet& descriptorSet);
+	private:
+		void LoadImages(tinygltf::Model& gltfModel);
+		void LoadSamplers(tinygltf::Model& gltfModel);
+		void LoadTextures(tinygltf::Model& gltfModel);
+		void LoadMaterials(tinygltf::Model& gltfModel);
+	private:
 		std::vector<Scene> m_vecScenes;
 
-		std::filesystem::path m_Filepath;
-
-		std::vector<Vertex3D> m_vecVertices;
-		VkBuffer m_VertexBuffer;
-		VkDeviceMemory m_VertexBufferMemory;
-
-		std::vector<UINT> m_vecIndices;
-		VkBuffer m_IndexBuffer;
-		VkDeviceMemory m_IndexBufferMemory;
-
 		std::vector<Image> m_vecImages;
+		std::vector<Sampler> m_vecSamplers;
 		std::vector<Texture> m_vecTextures;
+	};
+
+	class ModelFactor
+	{
+	public:
+		static std::unique_ptr<Model> CreateModel(VulkanRenderer* pRenderer, const std::filesystem::path& filepath);
 	};
 }

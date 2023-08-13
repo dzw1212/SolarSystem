@@ -140,13 +140,13 @@ void UI::Draw()
 
     if (ImGui::CollapsingHeader("Skybox", ImGuiTreeNodeFlags_DefaultOpen))
     {
-        ImGui::Checkbox("Enable", m_pRenderer->GetSkyboxEnable());
+        ImGui::Checkbox("Enable##Skybox", m_pRenderer->GetSkyboxEnable());
         ImGui::DragFloat("Rotate Speed", m_pRenderer->GetSkyboxRotateSpeed(), 0.01f, 1.f, 10.f, "%.1f");
     }
 
     if (ImGui::CollapsingHeader("Mesh Grid", ImGuiTreeNodeFlags_DefaultOpen))
     {
-        ImGui::Checkbox("Enable", m_pRenderer->GetMeshGridEnable());
+        ImGui::Checkbox("Enable##MeshGrid", m_pRenderer->GetMeshGridEnable());
         ImGui::DragFloat("Size", m_pRenderer->GetMeshGridSize(), 1.f, 100.f, 1000.f, "%.1f");
         ImGui::DragFloat("Split", m_pRenderer->GetMeshGridSplit(), 1.f, 1.f, 100.f, "%.1f");
         ImGui::DragFloat("Line Width", m_pRenderer->GetMeshGridLineWidth(), 1.f, 1.f, 20.f, "%.1f");
@@ -196,7 +196,7 @@ void UI::Draw()
     //    ImGui::DragFloat("Metallic", &pMaterial->fMetallic, 0.001f, 0.f, 1.f, "%.1f");
     //    ImGui::DragFloat("Roughness", &pMaterial->fRoughness, 0.001f, 0.f, 1.f, "%.1f");
     //}
-    ImGui::End();
+    //ImGui::End();
 }
 
 void UI::Render(UINT uiIdx)

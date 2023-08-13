@@ -73,8 +73,8 @@ private:
 	glm::mat4 m_ViewMatrix;
 	glm::mat4 m_ProjMatrix;
 
-	glm::vec3 m_Position = { 10.f, 0.f, 5.f };
-	glm::vec3 m_FocalPoint = { 10.f, 0.f, 0.f };
+	glm::vec3 m_Position = { 0.f, 0.f, 5.f };
+	glm::vec3 m_FocalPoint = { 0.f, 0.f, 0.f };
 
 	float m_fDistance = 10.f;
 

@@ -96,6 +96,10 @@ public:
 	void Loop();
 	void Clean();
 
+	friend class DZW_VulkanWrap::Model;
+	friend class DZW_VulkanWrap::OBJModel;
+	friend class DZW_VulkanWrap::GLTFModel;
+
 private:
 	static void FrameBufferResizeCallBack(GLFWwindow* pWindow, int nWidth, int nHeight);
 	static void MouseButtonCallBack(GLFWwindow* pWindow, int nButton, int nAction, int nMods);
@@ -222,11 +226,6 @@ private:
 	void LoadTexture(const std::filesystem::path& filepath, DZW_VulkanWrap::Texture& texture);
 	void FreeTexture(DZW_VulkanWrap::Texture& texture);
 
-	void LoadOBJ(DZW_VulkanWrap::Model& model);
-	void LoadGLTF(DZW_VulkanWrap::Model& model);
-	void LoadModel(const std::filesystem::path& filepath, DZW_VulkanWrap::Model& model);
-	void FreeModel(DZW_VulkanWrap::Model& model);
-
 public:
 	std::vector<PlanetInfo> m_vecPlanetInfo;
 	void LoadPlanetInfo();
@@ -261,8 +260,6 @@ public:
 
 	VkFormat GetSwapChainFormat() { return m_SwapChainFormat; }
 
-	VkPipeline& GetPipeline() { return m_GraphicPipeline; }
-
 	PhysicalDeviceInfo& GetPhysicalDeviceInfo() { return m_mapPhysicalDeviceInfo.at(m_PhysicalDevice); }
 
 	UINT FindSuitableMemoryTypeIndex(UINT typeFilter, VkMemoryPropertyFlags properties);
@@ -288,6 +285,26 @@ public:
 
 	DZW_LightWrap::PBRPointLight* GetPBRPointLight() { return &m_PBRPointLight; }
 	DZW_MaterialWrap::PBRMaterial* GetPBRMaterial() { return &m_PBRMaterial; }
+
+public:
+	struct CommonMVPUniformBufferObject
+	{
+		glm::mat4 model;
+		glm::mat4 view;
+		glm::mat4 proj;
+	};
+
+	void CreateCommonShader();
+
+	void CreateCommonMVPUniformBuffers();
+	void UpdateCommonMVPUniformBuffer(UINT uiIdx);
+
+	void CreateCommonDescriptorSetLayout();
+	void CreateCommonDescriptorPool();
+	void CreateCommonDescriptorSets();
+
+	void CreateCommonGraphicPipelineLayout();
+	void CreateCommonGraphicPipeline();
 
 public:
 	struct SkyboxUniformBufferObject
@@ -450,6 +467,7 @@ public:
 	void CreatePBRGraphicPipeline();
 
 private:
+	/********************必要资源**********************/
 	UINT m_uiWindowWidth;
 	UINT m_uiWindowHeight;
 	UINT m_uiPrimaryMonitorWidth;
@@ -503,6 +521,39 @@ private:
 
 	VkCommandPool m_TransferCommandPool;
 
+	VkCommandPool m_CommandPool;
+	std::vector<VkCommandBuffer> m_vecCommandBuffers;
+
+	std::vector<VkSemaphore> m_vecImageAvailableSemaphores;
+	std::vector<VkSemaphore> m_vecRenderFinishedSemaphores;
+	std::vector<VkFence> m_vecInFlightFences;
+
+	UINT m_uiCurFrameIdx;
+
+	bool m_bNeedResize = false;
+
+	/********************独立资源**********************/
+
+	//OBJ Model
+	//用于绘制OBJ模型，不涉及贴图
+	std::unordered_map<VkShaderStageFlagBits, std::filesystem::path> m_mapCommonShaderPath;
+	std::unordered_map<VkShaderStageFlagBits, VkShaderModule> m_mapCommonShaderModule;
+
+	std::vector<VkBuffer> m_vecCommonMVPUniformBuffers;
+	std::vector<VkDeviceMemory> m_vecCommonMVPUniformBufferMemories;
+	CommonMVPUniformBufferObject m_CommonMVPUboData;
+
+	VkDescriptorSetLayout m_CommonDescriptorSetLayout;
+	VkDescriptorPool m_CommonDescriptorPool;
+	std::vector<VkDescriptorSet> m_vecCommonDescriptorSets;
+
+	VkPipelineLayout m_CommonGraphicPipelineLayout;
+	VkPipeline m_CommonGraphicPipeline;
+	VkPipelineCache m_CommonGraphicPipelineCache = VK_NULL_HANDLE;
+
+	std::unique_ptr<DZW_VulkanWrap::Model> m_textModel;
+
+	//Planets
 	std::unordered_map<VkShaderStageFlagBits, std::filesystem::path> m_mapShaderPath;
 	std::unordered_map<VkShaderStageFlagBits, VkShaderModule> m_mapShaderModule;
 
@@ -513,25 +564,9 @@ private:
 
 	DZW_VulkanWrap::Texture m_Texture;
 
-	DZW_VulkanWrap::Model m_Model;
-
 	VkDescriptorSetLayout m_DescriptorSetLayout;
 	VkDescriptorPool m_DescriptorPool;
 	std::vector<VkDescriptorSet> m_vecDescriptorSets;
-
-	VkCommandPool m_CommandPool;
-	std::vector<VkCommandBuffer> m_vecCommandBuffers;
-
-	VkPipelineLayout m_GraphicPipelineLayout;
-	VkPipeline m_GraphicPipeline;
-
-	std::vector<VkSemaphore> m_vecImageAvailableSemaphores;
-	std::vector<VkSemaphore> m_vecRenderFinishedSemaphores;
-	std::vector<VkFence> m_vecInFlightFences;
-
-	UINT m_uiCurFrameIdx;
-
-	bool m_bNeedResize = false;
 
 	//Dynamic Uniform
 	std::vector<VkBuffer> m_vecDynamicUniformBuffers;
@@ -544,7 +579,6 @@ private:
 	bool m_bEnableSkybox = true;
 	float m_fSkyboxRotateSpeed = 1.f;
 	DZW_VulkanWrap::Texture m_SkyboxTexture;
-	DZW_VulkanWrap::Model m_SkyboxModel;
 	std::unordered_map<VkShaderStageFlagBits, VkShaderModule> m_mapSkyboxShaderModule;
 	SkyboxUniformBufferObject m_SkyboxUboData;
 	std::vector<VkBuffer> m_vecSkyboxUniformBuffers;
@@ -599,8 +633,6 @@ private:
 	DZW_MaterialWrap::BlinnPhongMaterial m_BlinnPhongMaterial;
 	DZW_LightWrap::BlinnPhongPointLight m_BlinnPhongPointLight;
 
-	DZW_VulkanWrap::Model m_BlinnPhongModel;
-
 	std::unordered_map<VkShaderStageFlagBits, VkShaderModule> m_mapBlinnPhongShaderModule;
 
 	BlinnPhongMVPUniformBufferObject m_BlinnPhongMVPUBOData;
@@ -626,8 +658,6 @@ private:
 	bool m_bEnablePBR = false;
 	DZW_MaterialWrap::PBRMaterial m_PBRMaterial;
 	DZW_LightWrap::PBRPointLight m_PBRPointLight;
-
-	DZW_VulkanWrap::Model m_PBRModel;
 
 	std::unordered_map<VkShaderStageFlagBits, VkShaderModule> m_mapPBRShaderModule;
 
