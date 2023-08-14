@@ -196,8 +196,8 @@ private:
 		VkImage& image, VkDeviceMemory& imageMemory);
 	bool CheckFormatHasStencilComponent(VkFormat format);
 	void ChangeImageLayout(VkImage image, VkFormat format, UINT uiMipLevelCount, UINT uiLayerCount, UINT uiFaceCount, VkImageLayout oldLayout, VkImageLayout newLayout);
-	void TransferImageDataByStageBuffer(void* pData, VkDeviceSize imageSize, VkImage& image, UINT uiWidth, UINT uiHeight, DZW_VulkanWrap::Texture& texture, ktxTexture* pKtxTexture);
-	void TransferImageDataByStageBuffer(void* pData, VkDeviceSize imageSize, VkImage& image, UINT uiWidth, UINT uiHeight);
+	void TransferImageDataByStageBuffer(const void* pData, VkDeviceSize imageSize, VkImage& image, UINT uiWidth, UINT uiHeight, DZW_VulkanWrap::Texture& texture, ktxTexture* pKtxTexture);
+	void TransferImageDataByStageBuffer(const void* pData, VkDeviceSize imageSize, VkImage& image, UINT uiWidth, UINT uiHeight);
 	
 
 	void CreateDescriptorSetLayout();
@@ -305,6 +305,15 @@ public:
 
 	void CreateCommonGraphicPipelineLayout();
 	void CreateCommonGraphicPipeline();
+
+public:
+	void CreateGLTFShader();
+
+	void CreateGLTFDescriptorSetLayout();
+	void CreateGLTFDescriptorPool();
+
+	void CreateGLTFGraphicPipelineLayout();
+	void CreateGLTFGraphicPipeline();
 
 public:
 	struct SkyboxUniformBufferObject
@@ -536,7 +545,6 @@ private:
 
 	//OBJ Model
 	//用于绘制OBJ模型，不涉及贴图
-	std::unordered_map<VkShaderStageFlagBits, std::filesystem::path> m_mapCommonShaderPath;
 	std::unordered_map<VkShaderStageFlagBits, VkShaderModule> m_mapCommonShaderModule;
 
 	std::vector<VkBuffer> m_vecCommonMVPUniformBuffers;
@@ -552,6 +560,18 @@ private:
 	VkPipelineCache m_CommonGraphicPipelineCache = VK_NULL_HANDLE;
 
 	std::unique_ptr<DZW_VulkanWrap::Model> m_textModel;
+
+	//glTF Model
+	//具有baseColor，normal，occlusionMetallicRoughness三张贴图
+	std::unordered_map<VkShaderStageFlagBits, VkShaderModule> m_mapGLTFShaderModule;
+
+	VkDescriptorSetLayout m_GLTFDescriptorSetLayout;
+	VkDescriptorPool m_GLTFDescriptorPool;
+
+	VkPipelineLayout m_GLTFGraphicPipelineLayout;
+	VkPipeline m_GLTFGraphicPipeline;
+
+	std::unique_ptr<DZW_VulkanWrap::Model> m_textGLTFModel;
 
 	//Planets
 	std::unordered_map<VkShaderStageFlagBits, std::filesystem::path> m_mapShaderPath;

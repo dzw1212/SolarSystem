@@ -1476,7 +1476,7 @@ void VulkanRenderer::ChangeImageLayout(VkImage image, VkFormat format, UINT uiMi
 	EndSingleTimeCommand(singleTimeCommandBuffer);
 }
 
-void VulkanRenderer::TransferImageDataByStageBuffer(void* pData, VkDeviceSize imageSize, VkImage& image, UINT uiWidth, UINT uiHeight, DZW_VulkanWrap::Texture& texture, ktxTexture* pKtxTexture)
+void VulkanRenderer::TransferImageDataByStageBuffer(const void* pData, VkDeviceSize imageSize, VkImage& image, UINT uiWidth, UINT uiHeight, DZW_VulkanWrap::Texture& texture, ktxTexture* pKtxTexture)
 {
 	if (texture.IsKtxTexture())
 	{
@@ -1555,7 +1555,7 @@ void VulkanRenderer::TransferImageDataByStageBuffer(void* pData, VkDeviceSize im
 	vkFreeMemory(m_LogicalDevice, stagingBufferMemory, nullptr);
 }
 
-void VulkanRenderer::TransferImageDataByStageBuffer(void* pData, VkDeviceSize imageSize, VkImage& image, UINT uiWidth, UINT uiHeight)
+void VulkanRenderer::TransferImageDataByStageBuffer(const void* pData, VkDeviceSize imageSize, VkImage& image, UINT uiWidth, UINT uiHeight)
 {
 	VkBuffer stagingBuffer;
 	VkDeviceMemory stagingBufferMemory;
@@ -4789,4 +4789,111 @@ void VulkanRenderer::CreateCommonGraphicPipeline()
 	VkPipelineCache pipelineCache = m_CommonGraphicPipelineCache;
 
 	VULKAN_ASSERT(vkCreateGraphicsPipelines(m_LogicalDevice, pipelineCache, 1, &pipelineCreateInfo, nullptr, &m_CommonGraphicPipeline), "Create common graphic pipeline failed");
+}
+
+void VulkanRenderer::CreateGLTFShader()
+{
+	std::unordered_map<VkShaderStageFlagBits, std::filesystem::path> mapShaderPath = {
+	{ VK_SHADER_STAGE_VERTEX_BIT,	"./Assert/Shader/glTF/vert.spv" },
+	{ VK_SHADER_STAGE_FRAGMENT_BIT,	"./Assert/Shader/glTF/frag.spv" },
+	};
+	ASSERT(mapShaderPath.size() > 0, "Detect no shader spv file");
+
+	m_mapGLTFShaderModule.clear();
+
+	for (const auto& spvPath : mapShaderPath)
+	{
+		auto shaderModule = DZW_VulkanUtils::CreateShaderModule(m_LogicalDevice, DZW_VulkanUtils::ReadShaderFile(spvPath.second));
+
+		m_mapGLTFShaderModule[spvPath.first] = shaderModule;
+	}
+}
+
+void VulkanRenderer::CreateGLTFDescriptorSetLayout()
+{
+	//baseColor sampler binding
+	VkDescriptorSetLayoutBinding baseColorSamplerLayoutBinding{};
+	baseColorSamplerLayoutBinding.binding = 0;
+	baseColorSamplerLayoutBinding.descriptorCount = 1;
+	baseColorSamplerLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+	baseColorSamplerLayoutBinding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT; //只用于fragment stage
+	baseColorSamplerLayoutBinding.pImmutableSamplers = nullptr;
+
+	//normal sampler binding
+	VkDescriptorSetLayoutBinding normalSamplerLayoutBinding{};
+	normalSamplerLayoutBinding.binding = 1;
+	normalSamplerLayoutBinding.descriptorCount = 1;
+	normalSamplerLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+	normalSamplerLayoutBinding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT; //只用于fragment stage
+	normalSamplerLayoutBinding.pImmutableSamplers = nullptr;
+
+	//occlusion+metallic+roughness sampler binding
+	VkDescriptorSetLayoutBinding omrSamplerLayoutBinding{};
+	omrSamplerLayoutBinding.binding = 2;
+	omrSamplerLayoutBinding.descriptorCount = 1;
+	omrSamplerLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+	omrSamplerLayoutBinding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT; //只用于fragment stage
+	omrSamplerLayoutBinding.pImmutableSamplers = nullptr;
+
+	std::vector<VkDescriptorSetLayoutBinding> vecDescriptorLayoutBinding = {
+		baseColorSamplerLayoutBinding,
+		normalSamplerLayoutBinding,
+		omrSamplerLayoutBinding,
+	};
+
+	VkDescriptorSetLayoutCreateInfo createInfo{};
+	createInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+	createInfo.bindingCount = static_cast<UINT>(vecDescriptorLayoutBinding.size());
+	createInfo.pBindings = vecDescriptorLayoutBinding.data();
+
+	VULKAN_ASSERT(vkCreateDescriptorSetLayout(m_LogicalDevice, &createInfo, nullptr, &m_GLTFDescriptorSetLayout), "Create gltf descriptor layout failed");
+}
+
+void VulkanRenderer::CreateGLTFDescriptorPool()
+{
+	//baseColor sampler
+	VkDescriptorPoolSize baseColorSamplerPoolSize{};
+	baseColorSamplerPoolSize.type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+	baseColorSamplerPoolSize.descriptorCount = static_cast<UINT>(m_vecSwapChainImages.size());
+
+	//normal sampler
+	VkDescriptorPoolSize normalSamplerPoolSize{};
+	normalSamplerPoolSize.type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+	normalSamplerPoolSize.descriptorCount = static_cast<UINT>(m_vecSwapChainImages.size());
+
+	//occlusion+metallic+roughness sampler
+	VkDescriptorPoolSize omrSamplerPoolSize{};
+	omrSamplerPoolSize.type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+	omrSamplerPoolSize.descriptorCount = static_cast<UINT>(m_vecSwapChainImages.size());
+
+	std::vector<VkDescriptorPoolSize> vecPoolSize = {
+		baseColorSamplerPoolSize,
+		normalSamplerPoolSize,
+		omrSamplerPoolSize
+	};
+
+	VkDescriptorPoolCreateInfo poolCreateInfo{};
+	poolCreateInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+	poolCreateInfo.poolSizeCount = static_cast<UINT>(vecPoolSize.size());
+	poolCreateInfo.pPoolSizes = vecPoolSize.data();
+	poolCreateInfo.maxSets = static_cast<UINT>(m_vecSwapChainImages.size());
+
+	VULKAN_ASSERT(vkCreateDescriptorPool(m_LogicalDevice, &poolCreateInfo, nullptr, &m_GLTFDescriptorPool), "Create gltf descriptor pool failed");
+}
+
+void VulkanRenderer::CreateGLTFGraphicPipelineLayout()
+{
+	VkPipelineLayoutCreateInfo pipelineLayoutCreateInfo{};
+	pipelineLayoutCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+	pipelineLayoutCreateInfo.setLayoutCount = 1;
+	pipelineLayoutCreateInfo.pSetLayouts = &m_GLTFDescriptorSetLayout;
+	pipelineLayoutCreateInfo.pushConstantRangeCount = 0;
+	pipelineLayoutCreateInfo.pPushConstantRanges = nullptr;
+
+	VULKAN_ASSERT(vkCreatePipelineLayout(m_LogicalDevice, &pipelineLayoutCreateInfo, nullptr, &m_GLTFGraphicPipelineLayout), "Create gltf pipeline layout failed");
+}
+
+void VulkanRenderer::CreateGLTFGraphicPipeline()
+{
+
 }

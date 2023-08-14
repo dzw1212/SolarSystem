@@ -227,37 +227,32 @@ namespace DZW_VulkanWrap
 	public:
 		struct Primitive 
 		{
-			UINT uiFirstIndex = 0;
-			UINT uiIndexCount = 0;
-			int nMaterialIndex = 0;
+			UINT m_uiFirstIndex = 0;
+			UINT m_uiIndexCount = 0;
+			int m_nMaterialIdx = 0;
 		};
 
 		struct Mesh 
 		{
+			std::string strName;
 			std::vector<Primitive> vecPrimitives;
-			int nIndex = -1;
-
-			
 		};
 
 		struct Node
 		{
-			Node* m_Parent = nullptr;
-			int m_nIndex = -1;
-			std::vector<Node> m_vecChildren;
+			int m_ParentIdx;
+			std::vector<int> m_vecChildren;
 
-			Mesh m_Mesh;
-			void LoadMesh(Model& model, const tinygltf::Model& gltfModel);
+			std::string strName;
+			int m_nMeshIdx;
+			int m_nIdx;
 
-			bool HaveMesh()
-			{
-				return m_Mesh.nIndex != -1;
-			}
+			glm::mat4 modelMatrix;
 		};
 
 		struct Scene
 		{
-			std::vector<Node> vecNodes;
+			std::vector<int> m_vecHeadNodes;
 		};
 
 		struct Image
@@ -281,6 +276,28 @@ namespace DZW_VulkanWrap
 			int m_nSamplerIdx;
 		};
 
+		struct Material
+		{
+			//glTF中，通常将occlusion/metallic/roughness放在同一个texture中
+			//R/G/B三个通道分别对应occlusion/metallic/roughness
+			std::string m_strName;
+			glm::vec4 m_BaseColorFactor = glm::vec4(1.f);
+			int m_nBaseColotTextureIdx;
+
+			float m_fMetallicFactor = 1.f;
+			float m_fRoughnessFactor = 1.f;
+			int m_nMetallicRoughnessTextureIdx = -1;
+
+			float m_fNormalScale = 1.f;
+			int m_nNormalTextureIdx = -1;
+			
+			float m_fOcclusionStrength = 1.f;
+			int m_nOcclusionTextureIdx = -1;
+
+			glm::vec3 m_EmmisiveFactor = glm::vec3(1.f);
+			int m_nEmmisiveTextureIdx = -1;
+		};
+
 	public:
 		GLTFModel(VulkanRenderer* pRenderer, const std::filesystem::path& filepath);
 		virtual ~GLTFModel();
@@ -289,16 +306,31 @@ namespace DZW_VulkanWrap
 
 		virtual void Draw(VkCommandBuffer& commandBuffer, VkPipeline& pipeline, VkPipelineLayout& pipelineLayout, VkDescriptorSet& descriptorSet);
 	private:
-		void LoadImages(tinygltf::Model& gltfModel);
-		void LoadSamplers(tinygltf::Model& gltfModel);
-		void LoadTextures(tinygltf::Model& gltfModel);
-		void LoadMaterials(tinygltf::Model& gltfModel);
+		void LoadImages(const tinygltf::Model& gltfModel);
+		void LoadSamplers(const tinygltf::Model& gltfModel);
+		void LoadTextures(const tinygltf::Model& gltfModel);
+		void LoadMaterials(const tinygltf::Model& gltfModel);
+		void LoadNodes(const tinygltf::Model& gltfModel);
+		void LoadMeshes(const tinygltf::Model& gltfModel);
+
+		void LoadNodeRelation(Node* parentNode, int nNodeIdx);
 	private:
-		std::vector<Scene> m_vecScenes;
+		Scene m_DefaultScene; //目前仅支持载入默认场景
 
 		std::vector<Image> m_vecImages;
 		std::vector<Sampler> m_vecSamplers;
 		std::vector<Texture> m_vecTextures;
+		std::vector<Material> m_vecMaterials;
+		std::vector<Node> m_vecNodes;
+		std::vector<Mesh> m_vecMeshes;
+
+		//为了GPU效率，将所有Vertex和Index放在一起
+		std::vector<Vertex3D> m_vecVertices;
+		VkBuffer m_VertexBuffer;
+		VkDeviceMemory m_VertexBufferMemory;
+		std::vector<UINT> m_vecIndices;
+		VkBuffer m_IndexBuffer;
+		VkDeviceMemory m_IndexBufferMemory;
 	};
 
 	class ModelFactor
