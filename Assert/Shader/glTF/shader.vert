@@ -17,4 +17,5 @@ layout (push_constant) uniform MVPPushConstant
 void main() 
 {
     gl_Position = MVPpc.proj * MVPpc.view * MVPpc.model * vec4(inPosition, 1.0);
+    outTexCoord = inTexCoord;
 }

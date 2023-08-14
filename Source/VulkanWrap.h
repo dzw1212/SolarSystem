@@ -230,6 +230,8 @@ namespace DZW_VulkanWrap
 			UINT m_uiFirstIndex = 0;
 			UINT m_uiIndexCount = 0;
 			int m_nMaterialIdx = 0;
+
+			VkDescriptorSet m_DescriptorSet = VK_NULL_HANDLE;
 		};
 
 		struct Mesh 
@@ -240,7 +242,7 @@ namespace DZW_VulkanWrap
 
 		struct Node
 		{
-			int m_ParentIdx;
+			int m_ParentIdx = -1;
 			std::vector<int> m_vecChildren;
 
 			std::string strName;
@@ -305,6 +307,8 @@ namespace DZW_VulkanWrap
 		virtual ModelType GetType() { return ModelType::MODEL_TYPE_GLTF; }
 
 		virtual void Draw(VkCommandBuffer& commandBuffer, VkPipeline& pipeline, VkPipelineLayout& pipelineLayout, VkDescriptorSet& descriptorSet);
+
+		void DrawNode(int nNodeIdx, VkCommandBuffer& commandBuffer, VkPipeline& pipeline, VkPipelineLayout& pipelineLayout);
 	private:
 		void LoadImages(const tinygltf::Model& gltfModel);
 		void LoadSamplers(const tinygltf::Model& gltfModel);

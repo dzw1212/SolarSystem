@@ -11,4 +11,5 @@ layout (binding = 2) uniform sampler2D occlusionMetallicRoughnessSampler;
 void main() 
 {
     outColor = texture(baseColorSampler, inTexCoord);
+    //outColor = vec4(1.0, 0.0, 0.0, 0.0);
 }

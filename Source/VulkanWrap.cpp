@@ -168,7 +168,58 @@ namespace DZW_VulkanWrap
 
 	void GLTFModel::Draw(VkCommandBuffer& commandBuffer, VkPipeline& pipeline, VkPipelineLayout& pipelineLayout, VkDescriptorSet& descriptorSet)
 	{
+		vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
+		VkBuffer vertexBuffers[] = {
+			m_VertexBuffer,
+		};
+		VkDeviceSize offsets[] = { 0 };
+		vkCmdBindVertexBuffers(commandBuffer, 0, 1, vertexBuffers, offsets);
+		vkCmdBindIndexBuffer(commandBuffer, m_IndexBuffer, 0, VK_INDEX_TYPE_UINT32);
 
+		for (UINT i = 0; i < m_DefaultScene.m_vecHeadNodes.size(); ++i)
+		{
+			DrawNode(m_DefaultScene.m_vecHeadNodes[i], commandBuffer, pipeline, pipelineLayout);
+		}
+	}
+
+	void GLTFModel::DrawNode(int nNodeIdx, VkCommandBuffer& commandBuffer, VkPipeline& pipeline, VkPipelineLayout& pipelineLayout)
+	{
+		auto& node = m_vecNodes[nNodeIdx];
+		if (node.m_nMeshIdx != -1)
+		{
+			auto& mesh = m_vecMeshes[node.m_nMeshIdx];
+			for (UINT i = 0; i < mesh.vecPrimitives.size(); ++i)
+			{
+				auto& primitive = mesh.vecPrimitives[i];
+
+				glm::mat4 nodeMatrix = node.modelMatrix;
+				int nParentNodeIdx = node.m_ParentIdx;
+				while (nParentNodeIdx != -1)
+				{
+					auto& parentNode = m_vecNodes[nParentNodeIdx];
+					nodeMatrix = parentNode.modelMatrix * nodeMatrix;
+					nParentNodeIdx = parentNode.m_ParentIdx;
+				}
+
+				glm::mat4 model, view, proj;
+				model = nodeMatrix;
+				view = m_pRenderer->m_Camera.GetViewMatrix();
+				proj = m_pRenderer->m_Camera.GetProjMatrix();
+				std::array<glm::mat4, 3> MVPPushConstants = { model, view, proj };
+				vkCmdPushConstants(commandBuffer, pipelineLayout, VK_SHADER_STAGE_VERTEX_BIT,
+					0, sizeof(MVPPushConstants), MVPPushConstants.data());
+
+				vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, 
+					0, 1, &primitive.m_DescriptorSet, 0, nullptr);
+
+				vkCmdDrawIndexed(commandBuffer, primitive.m_uiIndexCount, 1, primitive.m_uiFirstIndex, 0, 0);
+			}
+		}
+
+		for (int nChildNodeIdx : node.m_vecChildren)
+		{
+			DrawNode(nChildNodeIdx, commandBuffer, pipeline, pipelineLayout);
+		}
 	}
 
 	void GLTFModel::LoadImages(const tinygltf::Model& gltfModel)
@@ -238,6 +289,21 @@ namespace DZW_VulkanWrap
 			
 			if (bDeleteBuffer)
 				delete[] imageBuffer;
+
+			m_pRenderer->ChangeImageLayout(image.m_Image,
+				VK_FORMAT_R8G8B8A8_SRGB,
+				1,
+				1,
+				1,
+				VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+				VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+
+			image.m_ImageView = m_pRenderer->CreateImageView(image.m_Image,
+				VK_FORMAT_R8G8B8A8_SRGB,	//格式为sRGB
+				VK_IMAGE_ASPECT_COLOR_BIT,	//aspectFlags为COLOR_BIT
+				1,
+				1,
+				1);
 		}
 	}
 
@@ -435,6 +501,83 @@ namespace DZW_VulkanWrap
 				primitive.m_uiIndexCount = indexCount;
 				primitive.m_nMaterialIdx = glTFPrimitive.material;
 
+				auto& material = m_vecMaterials[primitive.m_nMaterialIdx];
+				auto& baseColorTexture = m_vecTextures[material.m_nBaseColotTextureIdx];
+				auto& normalTexture = m_vecTextures[material.m_nNormalTextureIdx];
+				auto& occlusionMetallicRoughnessTexture = m_vecTextures[material.m_nMetallicRoughnessTextureIdx]; //默认occlusionTexture与metallicRoughnessTexture一致
+
+				auto& baseColorImage = m_vecImages[baseColorTexture.m_nImageIdx];
+				auto& normalImage = m_vecImages[normalTexture.m_nImageIdx];
+				auto& occlusionMetallicRoughnessImage = m_vecImages[occlusionMetallicRoughnessTexture.m_nImageIdx];
+
+				auto& baseColorSampler = m_vecSamplers[0];
+				if (baseColorTexture.m_nSamplerIdx != -1)
+					baseColorSampler = m_vecSamplers[baseColorTexture.m_nSamplerIdx];
+				auto& normalSampler = m_vecSamplers[0];
+				if (normalTexture.m_nSamplerIdx != -1)
+					normalSampler = m_vecSamplers[normalTexture.m_nSamplerIdx];
+				auto& occlusionMetallicRoughnessSampler = m_vecSamplers[0];
+				if (occlusionMetallicRoughnessTexture.m_nSamplerIdx != -1)
+					occlusionMetallicRoughnessSampler = m_vecSamplers[occlusionMetallicRoughnessTexture.m_nSamplerIdx];
+
+				VkDescriptorSetAllocateInfo allocInfo{};
+				allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+				allocInfo.descriptorSetCount = 1;
+				allocInfo.descriptorPool = m_pRenderer->m_GLTFDescriptorPool;
+				allocInfo.pSetLayouts = &m_pRenderer->m_GLTFDescriptorSetLayout;
+
+				VULKAN_ASSERT(vkAllocateDescriptorSets(m_pRenderer->m_LogicalDevice, &allocInfo, &(primitive.m_DescriptorSet)), "Allocate gltf desctiprot set failed");
+
+				//baseColor sampler
+				VkDescriptorImageInfo baseColorImageInfo{};
+				baseColorImageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+				baseColorImageInfo.imageView = baseColorImage.m_ImageView;
+				baseColorImageInfo.sampler = baseColorSampler.m_Sampler;
+				VkWriteDescriptorSet baseColorSamplerWrite{};
+				baseColorSamplerWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+				baseColorSamplerWrite.dstSet = primitive.m_DescriptorSet;
+				baseColorSamplerWrite.dstBinding = 0;
+				baseColorSamplerWrite.dstArrayElement = 0;
+				baseColorSamplerWrite.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+				baseColorSamplerWrite.descriptorCount = 1;
+				baseColorSamplerWrite.pImageInfo = &baseColorImageInfo;
+
+				//normal sampler
+				VkDescriptorImageInfo normalImageInfo{};
+				normalImageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+				normalImageInfo.imageView = normalImage.m_ImageView;
+				normalImageInfo.sampler = normalSampler.m_Sampler;
+				VkWriteDescriptorSet normalSamplerWrite{};
+				normalSamplerWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+				normalSamplerWrite.dstSet = primitive.m_DescriptorSet;
+				normalSamplerWrite.dstBinding = 1;
+				normalSamplerWrite.dstArrayElement = 0;
+				normalSamplerWrite.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+				normalSamplerWrite.descriptorCount = 1;
+				normalSamplerWrite.pImageInfo = &normalImageInfo;
+
+				//ouulusion+metallic+roughness sampler
+				VkDescriptorImageInfo omrImageInfo{};
+				omrImageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+				omrImageInfo.imageView = occlusionMetallicRoughnessImage.m_ImageView;
+				omrImageInfo.sampler = occlusionMetallicRoughnessSampler.m_Sampler;
+				VkWriteDescriptorSet omrSamplerWrite{};
+				omrSamplerWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+				omrSamplerWrite.dstSet = primitive.m_DescriptorSet;
+				omrSamplerWrite.dstBinding = 2;
+				omrSamplerWrite.dstArrayElement = 0;
+				omrSamplerWrite.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+				omrSamplerWrite.descriptorCount = 1;
+				omrSamplerWrite.pImageInfo = &omrImageInfo;
+
+				std::vector<VkWriteDescriptorSet> vecDescriptorWrite = {
+					baseColorSamplerWrite,
+					normalSamplerWrite,
+					omrSamplerWrite,
+				};
+
+				vkUpdateDescriptorSets(m_pRenderer->m_LogicalDevice, static_cast<UINT>(vecDescriptorWrite.size()), vecDescriptorWrite.data(), 0, nullptr);
+
 				mesh.vecPrimitives.push_back(primitive);
 			}
 		}
@@ -506,7 +649,10 @@ namespace DZW_VulkanWrap
 			node.m_ParentIdx = parentNode->m_nIdx;
 		}
 		else
+		{
+			node.m_ParentIdx = -1;
 			m_DefaultScene.m_vecHeadNodes.push_back(nNodeIdx);
+		}
 
 		for (int nIdx : node.m_vecChildren)
 		{

@@ -96,10 +96,7 @@ void VulkanRenderer::Init()
 
 	/*******************独立资源*******************/
 
-	m_textModel = DZW_VulkanWrap::ModelFactor::CreateModel(this, "./Assert/Model/sphere.obj");
-
-	DZW_VulkanWrap::ModelFactor::CreateModel(this, "./Assert/Model/FlightHelmet/glTF/FlightHelmet.gltf");
-
+	//OBJ Model
 	CreateCommonShader();
 	CreateCommonMVPUniformBuffers();
 
@@ -110,8 +107,17 @@ void VulkanRenderer::Init()
 	CreateCommonGraphicPipelineLayout();
 	CreateCommonGraphicPipeline();
 
-	
+	//glTF Model
+	CreateGLTFShader();
 
+	CreateGLTFDescriptorSetLayout();
+	CreateGLTFDescriptorPool();
+
+	CreateGLTFGraphicPipelineLayout();
+	CreateGLTFGraphicPipeline();
+
+	m_testGLTFModel = DZW_VulkanWrap::ModelFactor::CreateModel(this, "./Assert/Model/FlightHelmet/glTF/FlightHelmet.gltf");
+	
 	//LoadPlanetInfo();
 
 	//LoadModel("./Assert/Model/sphere.obj", m_Model);
@@ -212,8 +218,6 @@ void VulkanRenderer::Clean()
 {
 	g_UI.Clean();
 
-
-	m_textModel.reset();
 
 	////Skybox
 	//FreeTexture(m_SkyboxTexture);
@@ -3060,7 +3064,7 @@ void VulkanRenderer::RecordCommandBuffer(VkCommandBuffer& commandBuffer, UINT ui
 
 	//UpdateUniformBuffer(m_uiCurFrameIdx);
 
-	UpdateCommonMVPUniformBuffer(m_uiCurFrameIdx);
+	//UpdateCommonMVPUniformBuffer(m_uiCurFrameIdx);
 
 	//if (m_bEnableSkybox)
 	//	UpdateSkyboxUniformBuffer(m_uiCurFrameIdx);
@@ -3257,7 +3261,7 @@ void VulkanRenderer::RecordCommandBuffer(VkCommandBuffer& commandBuffer, UINT ui
 	//	vkCmdDrawIndexed(commandBuffer, static_cast<UINT>(m_Model.m_vecIndices.size()), 1, 0, 0, 0);
 	//}
 
-	m_textModel->Draw(commandBuffer, m_CommonGraphicPipeline, m_CommonGraphicPipelineLayout, m_vecCommonDescriptorSets[uiIdx]);
+	m_testGLTFModel->Draw(commandBuffer, m_GLTFGraphicPipeline, m_GLTFGraphicPipelineLayout, m_vecCommonDescriptorSets[uiIdx]);
 
 	g_UI.Render(uiIdx);
 
@@ -4876,24 +4880,178 @@ void VulkanRenderer::CreateGLTFDescriptorPool()
 	poolCreateInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
 	poolCreateInfo.poolSizeCount = static_cast<UINT>(vecPoolSize.size());
 	poolCreateInfo.pPoolSizes = vecPoolSize.data();
-	poolCreateInfo.maxSets = static_cast<UINT>(m_vecSwapChainImages.size());
+	poolCreateInfo.maxSets = 100; //可以设置得很大，但并不意味着可以无限制地分配描述符集，并且描述符池也可能会占用大量的内存
+	//todo：应该创建swapChain中的Image个，然后update图片
 
 	VULKAN_ASSERT(vkCreateDescriptorPool(m_LogicalDevice, &poolCreateInfo, nullptr, &m_GLTFDescriptorPool), "Create gltf descriptor pool failed");
 }
 
 void VulkanRenderer::CreateGLTFGraphicPipelineLayout()
 {
+	VkPushConstantRange MVPPushConstantRange = {};
+	MVPPushConstantRange.stageFlags = VK_SHADER_STAGE_VERTEX_BIT; //在顶点着色器中使用
+	MVPPushConstantRange.offset = 0;
+	MVPPushConstantRange.size = sizeof(glm::mat4) * 3; //model/view/proj三个mat4
+
 	VkPipelineLayoutCreateInfo pipelineLayoutCreateInfo{};
 	pipelineLayoutCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
 	pipelineLayoutCreateInfo.setLayoutCount = 1;
 	pipelineLayoutCreateInfo.pSetLayouts = &m_GLTFDescriptorSetLayout;
-	pipelineLayoutCreateInfo.pushConstantRangeCount = 0;
-	pipelineLayoutCreateInfo.pPushConstantRanges = nullptr;
+	pipelineLayoutCreateInfo.pushConstantRangeCount = 1;
+	pipelineLayoutCreateInfo.pPushConstantRanges = &MVPPushConstantRange;
 
 	VULKAN_ASSERT(vkCreatePipelineLayout(m_LogicalDevice, &pipelineLayoutCreateInfo, nullptr, &m_GLTFGraphicPipelineLayout), "Create gltf pipeline layout failed");
 }
 
 void VulkanRenderer::CreateGLTFGraphicPipeline()
 {
+	/****************************可编程管线*******************************/
 
+	ASSERT(m_mapGLTFShaderModule.find(VK_SHADER_STAGE_VERTEX_BIT) != m_mapGLTFShaderModule.end(), "No vertex shader module");
+	ASSERT(m_mapGLTFShaderModule.find(VK_SHADER_STAGE_FRAGMENT_BIT) != m_mapGLTFShaderModule.end(), "No fragment shader module");
+
+	VkPipelineShaderStageCreateInfo vertShaderStageCreateInfo{};
+	vertShaderStageCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+	vertShaderStageCreateInfo.stage = VK_SHADER_STAGE_VERTEX_BIT;
+	vertShaderStageCreateInfo.module = m_mapGLTFShaderModule.at(VK_SHADER_STAGE_VERTEX_BIT); //Bytecode
+	vertShaderStageCreateInfo.pName = "main"; //要invoke的函数
+
+	VkPipelineShaderStageCreateInfo fragShaderStageCreateInfo{};
+	fragShaderStageCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+	fragShaderStageCreateInfo.stage = VK_SHADER_STAGE_FRAGMENT_BIT;
+	fragShaderStageCreateInfo.module = m_mapGLTFShaderModule.at(VK_SHADER_STAGE_FRAGMENT_BIT); //Bytecode
+	fragShaderStageCreateInfo.pName = "main"; //要invoke的函数
+
+	VkPipelineShaderStageCreateInfo shaderStageCreateInfos[] = {
+		vertShaderStageCreateInfo,
+		fragShaderStageCreateInfo,
+	};
+
+	/*****************************固定管线*******************************/
+
+	//-----------------------Dynamic State--------------------------//
+	//一般会将Viewport和Scissor设为dynamic，以方便随时修改
+	VkPipelineDynamicStateCreateInfo dynamicStateCreateInfo{};
+	dynamicStateCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO;
+
+	std::vector<VkDynamicState> vecDynamicStates = {
+		VK_DYNAMIC_STATE_VIEWPORT,
+		VK_DYNAMIC_STATE_SCISSOR,
+	};
+	dynamicStateCreateInfo.dynamicStateCount = static_cast<UINT>(vecDynamicStates.size());
+	dynamicStateCreateInfo.pDynamicStates = vecDynamicStates.data();
+
+
+	//-----------------------Vertex Input State--------------------------//
+	auto bindingDescription = Vertex3D::GetBindingDescription();
+	auto attributeDescriptions = Vertex3D::GetAttributeDescriptions();
+	VkPipelineVertexInputStateCreateInfo vertexInputCreateInfo{};
+	vertexInputCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
+	vertexInputCreateInfo.vertexBindingDescriptionCount = 1;
+	vertexInputCreateInfo.pVertexBindingDescriptions = &bindingDescription;
+	vertexInputCreateInfo.vertexAttributeDescriptionCount = static_cast<UINT>(attributeDescriptions.size());
+	vertexInputCreateInfo.pVertexAttributeDescriptions = attributeDescriptions.data();
+
+	//-----------------------Input Assembly State------------------------//
+	VkPipelineInputAssemblyStateCreateInfo inputAssemblyCreateInfo{};
+	inputAssemblyCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
+	inputAssemblyCreateInfo.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+	inputAssemblyCreateInfo.primitiveRestartEnable = VK_FALSE;
+
+
+	//-----------------------Viewport State--------------------------//
+	VkPipelineViewportStateCreateInfo viewportStateCreateInfo{};
+	viewportStateCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
+	viewportStateCreateInfo.viewportCount = 1;
+	viewportStateCreateInfo.scissorCount = 1;
+
+	//-----------------------Raserization State--------------------------//
+	VkPipelineRasterizationStateCreateInfo rasterizationStateCreateInfo{};
+	rasterizationStateCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
+	rasterizationStateCreateInfo.depthClampEnable = VK_FALSE;	//开启后，超过远近平面的部分会被截断在远近平面上，而不是丢弃
+	rasterizationStateCreateInfo.rasterizerDiscardEnable = VK_FALSE;	//开启后，禁止所有图元经过光栅化器
+	rasterizationStateCreateInfo.polygonMode = VK_POLYGON_MODE_FILL;	//图元模式，可以是FILL、LINE、POINT
+	rasterizationStateCreateInfo.lineWidth = 1.f;	//指定光栅化后的线段宽度
+	rasterizationStateCreateInfo.cullMode = VK_CULL_MODE_NONE;	//剔除模式，可以是NONE、FRONT、BACK、FRONT_AND_BACK
+	rasterizationStateCreateInfo.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE; //顶点序，可以是顺时针cw或逆时针ccw
+	rasterizationStateCreateInfo.depthBiasEnable = VK_FALSE; //深度偏移，一般用于Shaodw Map中避免阴影痤疮
+	rasterizationStateCreateInfo.depthBiasConstantFactor = 0.f;
+	rasterizationStateCreateInfo.depthBiasClamp = 0.f;
+	rasterizationStateCreateInfo.depthBiasSlopeFactor = 0.f;
+
+	//-----------------------Multisample State--------------------------//
+	VkPipelineMultisampleStateCreateInfo multisamplingStateCreateInfo{};
+	multisamplingStateCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
+	multisamplingStateCreateInfo.sampleShadingEnable = false;
+	multisamplingStateCreateInfo.minSampleShading = 0.8f;
+	multisamplingStateCreateInfo.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
+	multisamplingStateCreateInfo.minSampleShading = 1.f;
+	multisamplingStateCreateInfo.pSampleMask = nullptr;
+	multisamplingStateCreateInfo.alphaToCoverageEnable = VK_FALSE;
+	multisamplingStateCreateInfo.alphaToOneEnable = VK_FALSE;
+
+	//-----------------------Depth Stencil State--------------------------//
+	VkPipelineDepthStencilStateCreateInfo depthStencilStateCreateInfo{};
+	depthStencilStateCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
+	depthStencilStateCreateInfo.depthTestEnable = VK_TRUE;
+	depthStencilStateCreateInfo.depthWriteEnable = VK_TRUE;
+	depthStencilStateCreateInfo.depthCompareOp = VK_COMPARE_OP_LESS_OR_EQUAL;
+	depthStencilStateCreateInfo.depthBoundsTestEnable = VK_FALSE;
+	depthStencilStateCreateInfo.minDepthBounds = 0.f;
+	depthStencilStateCreateInfo.maxDepthBounds = 1.f;
+	depthStencilStateCreateInfo.stencilTestEnable = VK_FALSE;
+	depthStencilStateCreateInfo.front = {};
+	depthStencilStateCreateInfo.back = {};
+
+	//-----------------------Color Blend State--------------------------//
+	VkPipelineColorBlendStateCreateInfo colorBlendStateCreateInfo{};
+	colorBlendStateCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
+	colorBlendStateCreateInfo.logicOpEnable = VK_FALSE;
+	colorBlendStateCreateInfo.logicOp = VK_LOGIC_OP_COPY;
+	colorBlendStateCreateInfo.attachmentCount = 1;
+
+	VkPipelineColorBlendAttachmentState colorBlendAttachment{};
+	colorBlendAttachment.colorWriteMask =
+		VK_COLOR_COMPONENT_R_BIT
+		| VK_COLOR_COMPONENT_G_BIT
+		| VK_COLOR_COMPONENT_B_BIT
+		| VK_COLOR_COMPONENT_A_BIT;
+	colorBlendAttachment.blendEnable = VK_FALSE;
+	colorBlendAttachment.srcColorBlendFactor = VK_BLEND_FACTOR_ONE;
+	colorBlendAttachment.dstColorBlendFactor = VK_BLEND_FACTOR_ZERO;
+	colorBlendAttachment.colorBlendOp = VK_BLEND_OP_ADD;
+	colorBlendAttachment.srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
+	colorBlendAttachment.dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO;
+	colorBlendAttachment.alphaBlendOp = VK_BLEND_OP_ADD;
+
+	colorBlendStateCreateInfo.pAttachments = &colorBlendAttachment;
+	colorBlendStateCreateInfo.blendConstants[0] = 0.f;
+	colorBlendStateCreateInfo.blendConstants[1] = 0.f;
+	colorBlendStateCreateInfo.blendConstants[2] = 0.f;
+	colorBlendStateCreateInfo.blendConstants[3] = 0.f;
+
+	/***********************************************************************/
+	VkGraphicsPipelineCreateInfo pipelineCreateInfo{};
+	pipelineCreateInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
+	pipelineCreateInfo.stageCount = static_cast<UINT>(m_mapGLTFShaderModule.size());
+	pipelineCreateInfo.pStages = shaderStageCreateInfos;
+	pipelineCreateInfo.pDynamicState = &dynamicStateCreateInfo;
+	pipelineCreateInfo.pVertexInputState = &vertexInputCreateInfo;
+	pipelineCreateInfo.pInputAssemblyState = &inputAssemblyCreateInfo;
+	pipelineCreateInfo.pViewportState = &viewportStateCreateInfo;
+	pipelineCreateInfo.pRasterizationState = &rasterizationStateCreateInfo;
+	pipelineCreateInfo.pMultisampleState = &multisamplingStateCreateInfo;
+	pipelineCreateInfo.pDepthStencilState = &depthStencilStateCreateInfo;
+	pipelineCreateInfo.pColorBlendState = &colorBlendStateCreateInfo;
+	pipelineCreateInfo.layout = m_GLTFGraphicPipelineLayout;
+	pipelineCreateInfo.renderPass = m_RenderPass;
+	pipelineCreateInfo.subpass = 0;
+	pipelineCreateInfo.basePipelineHandle = VK_NULL_HANDLE;
+	pipelineCreateInfo.basePipelineIndex = -1;
+
+	//创建管线时，如果提供了VkPipelineCache对象，Vulkan会尝试从中重用数据
+	//如果没有可重用的数据，新的数据会被添加到缓存中
+	VkPipelineCache pipelineCache = m_CommonGraphicPipelineCache;
+
+	VULKAN_ASSERT(vkCreateGraphicsPipelines(m_LogicalDevice, pipelineCache, 1, &pipelineCreateInfo, nullptr, &m_GLTFGraphicPipeline), "Create gltf graphic pipeline failed");
 }

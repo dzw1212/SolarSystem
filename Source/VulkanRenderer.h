@@ -559,8 +559,6 @@ private:
 	VkPipeline m_CommonGraphicPipeline;
 	VkPipelineCache m_CommonGraphicPipelineCache = VK_NULL_HANDLE;
 
-	std::unique_ptr<DZW_VulkanWrap::Model> m_textModel;
-
 	//glTF Model
 	//具有baseColor，normal，occlusionMetallicRoughness三张贴图
 	std::unordered_map<VkShaderStageFlagBits, VkShaderModule> m_mapGLTFShaderModule;
@@ -571,7 +569,7 @@ private:
 	VkPipelineLayout m_GLTFGraphicPipelineLayout;
 	VkPipeline m_GLTFGraphicPipeline;
 
-	std::unique_ptr<DZW_VulkanWrap::Model> m_textGLTFModel;
+	std::unique_ptr<DZW_VulkanWrap::Model> m_testGLTFModel;
 
 	//Planets
 	std::unordered_map<VkShaderStageFlagBits, std::filesystem::path> m_mapShaderPath;
