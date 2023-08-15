@@ -38,6 +38,9 @@ public:
 	const glm::vec3& GetPosition() { return m_Position; }
 	void SetPosition(const glm::vec3& pos) { m_Position = pos; }
 
+	const glm::vec3& GetFocalPoint() { return m_FocalPoint; }
+	void SetFocalPoint(const glm::vec3& pos) { m_FocalPoint = pos; }
+
 	glm::quat GetOrientation() const;
 
 	float GetPitch() const { return m_fPitch; }
@@ -87,5 +90,7 @@ private:
 
 	glm::vec2 m_InititalMousePosition;
 
-	GLFWwindow* m_pWindow{ nullptr };
+	bool bFlipY = true;
+
+	GLFWwindow* m_pWindow = nullptr;
 };
