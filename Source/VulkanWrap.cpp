@@ -501,83 +501,86 @@ namespace DZW_VulkanWrap
 				primitive.m_uiIndexCount = indexCount;
 				primitive.m_nMaterialIdx = glTFPrimitive.material;
 
-				auto& material = m_vecMaterials[primitive.m_nMaterialIdx];
-				auto& baseColorTexture = m_vecTextures[material.m_nBaseColotTextureIdx];
-				auto& normalTexture = m_vecTextures[material.m_nNormalTextureIdx];
-				auto& occlusionMetallicRoughnessTexture = m_vecTextures[material.m_nMetallicRoughnessTextureIdx]; //默认occlusionTexture与metallicRoughnessTexture一致
+				if (primitive.m_nMaterialIdx != -1)
+				{
+					auto& material = m_vecMaterials[primitive.m_nMaterialIdx];
+					auto& baseColorTexture = m_vecTextures[material.m_nBaseColotTextureIdx];
+					auto& normalTexture = m_vecTextures[material.m_nNormalTextureIdx];
+					auto& occlusionMetallicRoughnessTexture = m_vecTextures[material.m_nMetallicRoughnessTextureIdx]; //默认occlusionTexture与metallicRoughnessTexture一致
 
-				auto& baseColorImage = m_vecImages[baseColorTexture.m_nImageIdx];
-				auto& normalImage = m_vecImages[normalTexture.m_nImageIdx];
-				auto& occlusionMetallicRoughnessImage = m_vecImages[occlusionMetallicRoughnessTexture.m_nImageIdx];
+					auto& baseColorImage = m_vecImages[baseColorTexture.m_nImageIdx];
+					auto& normalImage = m_vecImages[normalTexture.m_nImageIdx];
+					auto& occlusionMetallicRoughnessImage = m_vecImages[occlusionMetallicRoughnessTexture.m_nImageIdx];
 
-				auto& baseColorSampler = m_vecSamplers[0];
-				if (baseColorTexture.m_nSamplerIdx != -1)
-					baseColorSampler = m_vecSamplers[baseColorTexture.m_nSamplerIdx];
-				auto& normalSampler = m_vecSamplers[0];
-				if (normalTexture.m_nSamplerIdx != -1)
-					normalSampler = m_vecSamplers[normalTexture.m_nSamplerIdx];
-				auto& occlusionMetallicRoughnessSampler = m_vecSamplers[0];
-				if (occlusionMetallicRoughnessTexture.m_nSamplerIdx != -1)
-					occlusionMetallicRoughnessSampler = m_vecSamplers[occlusionMetallicRoughnessTexture.m_nSamplerIdx];
+					auto& baseColorSampler = m_vecSamplers[0];
+					if (baseColorTexture.m_nSamplerIdx != -1)
+						baseColorSampler = m_vecSamplers[baseColorTexture.m_nSamplerIdx];
+					auto& normalSampler = m_vecSamplers[0];
+					if (normalTexture.m_nSamplerIdx != -1)
+						normalSampler = m_vecSamplers[normalTexture.m_nSamplerIdx];
+					auto& occlusionMetallicRoughnessSampler = m_vecSamplers[0];
+					if (occlusionMetallicRoughnessTexture.m_nSamplerIdx != -1)
+						occlusionMetallicRoughnessSampler = m_vecSamplers[occlusionMetallicRoughnessTexture.m_nSamplerIdx];
 
-				VkDescriptorSetAllocateInfo allocInfo{};
-				allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
-				allocInfo.descriptorSetCount = 1;
-				allocInfo.descriptorPool = m_pRenderer->m_GLTFDescriptorPool;
-				allocInfo.pSetLayouts = &m_pRenderer->m_GLTFDescriptorSetLayout;
+					VkDescriptorSetAllocateInfo allocInfo{};
+					allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+					allocInfo.descriptorSetCount = 1;
+					allocInfo.descriptorPool = m_pRenderer->m_GLTFDescriptorPool;
+					allocInfo.pSetLayouts = &m_pRenderer->m_GLTFDescriptorSetLayout;
 
-				VULKAN_ASSERT(vkAllocateDescriptorSets(m_pRenderer->m_LogicalDevice, &allocInfo, &(primitive.m_DescriptorSet)), "Allocate gltf desctiprot set failed");
+					VULKAN_ASSERT(vkAllocateDescriptorSets(m_pRenderer->m_LogicalDevice, &allocInfo, &(primitive.m_DescriptorSet)), "Allocate gltf desctiprot set failed");
 
-				//baseColor sampler
-				VkDescriptorImageInfo baseColorImageInfo{};
-				baseColorImageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-				baseColorImageInfo.imageView = baseColorImage.m_ImageView;
-				baseColorImageInfo.sampler = baseColorSampler.m_Sampler;
-				VkWriteDescriptorSet baseColorSamplerWrite{};
-				baseColorSamplerWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-				baseColorSamplerWrite.dstSet = primitive.m_DescriptorSet;
-				baseColorSamplerWrite.dstBinding = 0;
-				baseColorSamplerWrite.dstArrayElement = 0;
-				baseColorSamplerWrite.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-				baseColorSamplerWrite.descriptorCount = 1;
-				baseColorSamplerWrite.pImageInfo = &baseColorImageInfo;
+					//baseColor sampler
+					VkDescriptorImageInfo baseColorImageInfo{};
+					baseColorImageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+					baseColorImageInfo.imageView = baseColorImage.m_ImageView;
+					baseColorImageInfo.sampler = baseColorSampler.m_Sampler;
+					VkWriteDescriptorSet baseColorSamplerWrite{};
+					baseColorSamplerWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+					baseColorSamplerWrite.dstSet = primitive.m_DescriptorSet;
+					baseColorSamplerWrite.dstBinding = 0;
+					baseColorSamplerWrite.dstArrayElement = 0;
+					baseColorSamplerWrite.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+					baseColorSamplerWrite.descriptorCount = 1;
+					baseColorSamplerWrite.pImageInfo = &baseColorImageInfo;
 
-				//normal sampler
-				VkDescriptorImageInfo normalImageInfo{};
-				normalImageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-				normalImageInfo.imageView = normalImage.m_ImageView;
-				normalImageInfo.sampler = normalSampler.m_Sampler;
-				VkWriteDescriptorSet normalSamplerWrite{};
-				normalSamplerWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-				normalSamplerWrite.dstSet = primitive.m_DescriptorSet;
-				normalSamplerWrite.dstBinding = 1;
-				normalSamplerWrite.dstArrayElement = 0;
-				normalSamplerWrite.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-				normalSamplerWrite.descriptorCount = 1;
-				normalSamplerWrite.pImageInfo = &normalImageInfo;
+					//normal sampler
+					VkDescriptorImageInfo normalImageInfo{};
+					normalImageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+					normalImageInfo.imageView = normalImage.m_ImageView;
+					normalImageInfo.sampler = normalSampler.m_Sampler;
+					VkWriteDescriptorSet normalSamplerWrite{};
+					normalSamplerWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+					normalSamplerWrite.dstSet = primitive.m_DescriptorSet;
+					normalSamplerWrite.dstBinding = 1;
+					normalSamplerWrite.dstArrayElement = 0;
+					normalSamplerWrite.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+					normalSamplerWrite.descriptorCount = 1;
+					normalSamplerWrite.pImageInfo = &normalImageInfo;
 
-				//ouulusion+metallic+roughness sampler
-				VkDescriptorImageInfo omrImageInfo{};
-				omrImageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-				omrImageInfo.imageView = occlusionMetallicRoughnessImage.m_ImageView;
-				omrImageInfo.sampler = occlusionMetallicRoughnessSampler.m_Sampler;
-				VkWriteDescriptorSet omrSamplerWrite{};
-				omrSamplerWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-				omrSamplerWrite.dstSet = primitive.m_DescriptorSet;
-				omrSamplerWrite.dstBinding = 2;
-				omrSamplerWrite.dstArrayElement = 0;
-				omrSamplerWrite.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-				omrSamplerWrite.descriptorCount = 1;
-				omrSamplerWrite.pImageInfo = &omrImageInfo;
+					//ouulusion+metallic+roughness sampler
+					VkDescriptorImageInfo omrImageInfo{};
+					omrImageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+					omrImageInfo.imageView = occlusionMetallicRoughnessImage.m_ImageView;
+					omrImageInfo.sampler = occlusionMetallicRoughnessSampler.m_Sampler;
+					VkWriteDescriptorSet omrSamplerWrite{};
+					omrSamplerWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+					omrSamplerWrite.dstSet = primitive.m_DescriptorSet;
+					omrSamplerWrite.dstBinding = 2;
+					omrSamplerWrite.dstArrayElement = 0;
+					omrSamplerWrite.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+					omrSamplerWrite.descriptorCount = 1;
+					omrSamplerWrite.pImageInfo = &omrImageInfo;
 
-				std::vector<VkWriteDescriptorSet> vecDescriptorWrite = {
-					baseColorSamplerWrite,
-					normalSamplerWrite,
-					omrSamplerWrite,
-				};
+					std::vector<VkWriteDescriptorSet> vecDescriptorWrite = {
+						baseColorSamplerWrite,
+						normalSamplerWrite,
+						omrSamplerWrite,
+					};
 
-				vkUpdateDescriptorSets(m_pRenderer->m_LogicalDevice, static_cast<UINT>(vecDescriptorWrite.size()), vecDescriptorWrite.data(), 0, nullptr);
-
+					vkUpdateDescriptorSets(m_pRenderer->m_LogicalDevice, static_cast<UINT>(vecDescriptorWrite.size()), vecDescriptorWrite.data(), 0, nullptr);
+				}
+				
 				mesh.vecPrimitives.push_back(primitive);
 			}
 		}
