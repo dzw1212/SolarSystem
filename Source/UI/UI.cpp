@@ -132,8 +132,6 @@ void UI::Draw()
     ImGui::Begin("Stat");
     ImGui::Text("FPS: %d", m_pRenderer->GetFPS());
 
-    ImGui::Text("Camera Pos: %.2f, %.2f, %.2f", m_pRenderer->GetCameraPosition().x, m_pRenderer->GetCameraPosition().y, m_pRenderer->GetCameraPosition().z);
-
     static float fLod = 0.f;
     if (ImGui::SliderFloat("Texture Lod", &fLod, 0.f, static_cast<float>(m_pRenderer->GetTextureMaxLod()), "%.1f"))
         m_pRenderer->SetTextureLod(fLod);
@@ -151,6 +149,17 @@ void UI::Draw()
         ImGui::DragFloat("Split", m_pRenderer->GetMeshGridSplit(), 1.f, 1.f, 100.f, "%.1f");
         ImGui::DragFloat("Line Width", m_pRenderer->GetMeshGridLineWidth(), 1.f, 1.f, 20.f, "%.1f");
     }
+    ImGui::End();
+
+    ImGui::Begin("Camera");
+    auto& pos = m_pRenderer->m_Camera.GetPosition();
+    auto& focalPoint = m_pRenderer->m_Camera.GetFocalPoint();
+    ImGui::Text("Pos:   %.2f, %.2f, %.2f", pos.x, pos.y, pos.z);
+    ImGui::Text("Focus: %.2f, %.2f, %.2f", focalPoint.x, focalPoint.y, focalPoint.z);
+    ImGui::Text("Vertical FOV: %.1f", m_pRenderer->m_Camera.GetVerticalFOV());
+    ImGui::Text("Yaw:    %.1f", fmod(m_pRenderer->m_Camera.GetYaw(), 360.f));
+    ImGui::Text("Pitch:  %.1f", fmod(m_pRenderer->m_Camera.GetPitch(), 360.f));
+    ImGui::Text("Roll:   %.1f", fmod(m_pRenderer->m_Camera.GetRoll(), 360.f));
     ImGui::End();
 
     //ImGui::Begin("Blinn Phong");

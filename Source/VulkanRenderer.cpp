@@ -2042,10 +2042,11 @@ void VulkanRenderer::CreateSyncObjects()
 
 void VulkanRenderer::SetupCamera()
 {
-	m_Camera.Set(45.f, (float)m_SwapChainExtent2D.width / (float)m_SwapChainExtent2D.height, 0.1f, 10000.f);
-	m_Camera.SetViewportSize(static_cast<float>(m_SwapChainExtent2D.width), static_cast<float>(m_SwapChainExtent2D.height));
 	m_Camera.SetWindow(m_pWindow);
-	m_Camera.SetPosition({ 0.f, 0.f, 100.f });
+	m_Camera.SetPosition({ 0.f, 0.f, 3.f });
+	m_Camera.SetFocalPoint({ 0.f, 0.f, 0.f });
+	m_Camera.SetFlipY(false);
+	m_Camera.Init(45.f, static_cast<float>(m_SwapChainExtent2D.width), static_cast<float>(m_SwapChainExtent2D.height), 0.1f, 10000.f);
 
 	glfwSetWindowUserPointer(m_pWindow, (void*)&m_Camera);
 
@@ -2378,8 +2379,6 @@ void VulkanRenderer::UpdateMeshGridUniformBuffer(UINT uiIdx)
 	m_MeshGridUboData.model = glm::rotate(glm::mat4(1.f), glm::radians(90.f), { 1.f, 0.f, 0.f });
 	m_MeshGridUboData.view = m_Camera.GetViewMatrix();
 	m_MeshGridUboData.proj = m_Camera.GetProjMatrix();
-	//OpenGL与Vulkan的差异 - Y坐标是反的
-	m_MeshGridUboData.proj[1][1] *= -1.f;
 
 	void* uniformBufferData;
 	vkMapMemory(m_LogicalDevice, m_vecMeshGridUniformBufferMemories[uiIdx], 0, sizeof(MeshGridUniformBufferObject), 0, &uniformBufferData);
@@ -2666,8 +2665,6 @@ void VulkanRenderer::UpdateEllipseUniformBuffer(UINT uiIdx)
 	m_EllipseUboData.model = glm::rotate(glm::mat4(1.f), glm::radians(90.f), { 1.f, 0.f, 0.f }) * glm::scale(glm::mat4(1.f), {100.f, 100.f, 1.f});
 	m_EllipseUboData.view = m_Camera.GetViewMatrix();
 	m_EllipseUboData.proj = m_Camera.GetProjMatrix();
-	//OpenGL与Vulkan的差异 - Y坐标是反的
-	m_EllipseUboData.proj[1][1] *= -1.f;
 
 	void* uniformBufferData;
 	vkMapMemory(m_LogicalDevice, m_vecEllipseUniformBufferMemories[uiIdx], 0, sizeof(MeshGridUniformBufferObject), 0, &uniformBufferData);
@@ -2938,8 +2935,6 @@ void VulkanRenderer::UpdateSkyboxUniformBuffer(UINT uiIdx)
 	m_SkyboxUboData.modelView = m_Camera.GetViewMatrix() * rotateComponent;
 	m_SkyboxUboData.modelView[3] = glm::vec4(0.0f, 0.0f, 0.0f, 1.0f); //移除平移分量
 	m_SkyboxUboData.proj = m_Camera.GetProjMatrix();
-	//OpenGL与Vulkan的差异 - Y坐标是反的
-	m_SkyboxUboData.proj[1][1] *= -1.f;
 
 	void* uniformBufferData;
 	vkMapMemory(m_LogicalDevice, m_vecSkyboxUniformBufferMemories[uiIdx], 0, sizeof(SkyboxUniformBufferObject), 0, &uniformBufferData);
@@ -3280,8 +3275,6 @@ void VulkanRenderer::UpdateUniformBuffer(UINT uiIdx)
 
 	m_UboData.view = m_Camera.GetViewMatrix();
 	m_UboData.proj = m_Camera.GetProjMatrix();
-	//OpenGL与Vulkan的差异 - Y坐标是反的
-	m_UboData.proj[1][1] *= -1.f;
 
 	void* uniformBufferData;
 	vkMapMemory(m_LogicalDevice, m_vecUniformBufferMemories[uiIdx], 0, m_UboBufferSize, 0, &uniformBufferData);
@@ -3725,8 +3718,6 @@ void VulkanRenderer::UpdateBlinnPhongMVPUniformBuffer(UINT uiIdx)
 	m_BlinnPhongMVPUBOData.model = glm::translate(glm::mat4(1.f), {0.f, 0.f, 0.f});
 	m_BlinnPhongMVPUBOData.view = m_Camera.GetViewMatrix();
 	m_BlinnPhongMVPUBOData.proj = m_Camera.GetProjMatrix();
-	//OpenGL与Vulkan的差异 - Y坐标是反的
-	m_BlinnPhongMVPUBOData.proj[1][1] *= -1.f;
 
 	m_BlinnPhongMVPUBOData.mv_normal = glm::transpose(glm::inverse(m_BlinnPhongMVPUBOData.view * m_BlinnPhongMVPUBOData.model));
 
@@ -4139,7 +4130,6 @@ void VulkanRenderer::UpdatePBRMVPUniformBuffer(UINT uiIdx)
 	m_PBRMVPUBOData.model = glm::translate(glm::mat4(1.f), { 10.f, 0.f, 0.f });
 	m_PBRMVPUBOData.view = m_Camera.GetViewMatrix();
 	m_PBRMVPUBOData.proj = m_Camera.GetProjMatrix();
-	m_PBRMVPUBOData.proj[1][1] *= -1.f;
 
 	m_PBRMVPUBOData.mv_normal = glm::transpose(glm::inverse(m_PBRMVPUBOData.view * m_PBRMVPUBOData.model));
 
@@ -4541,8 +4531,6 @@ void VulkanRenderer::UpdateCommonMVPUniformBuffer(UINT uiIdx)
 	m_CommonMVPUboData.model = glm::translate(glm::mat4(1.f), { 0.f, 0.f, 0.f });
 	m_CommonMVPUboData.view = m_Camera.GetViewMatrix();
 	m_CommonMVPUboData.proj = m_Camera.GetProjMatrix();
-	//OpenGL与Vulkan的差异 - Y坐标是反的
-	m_CommonMVPUboData.proj[1][1] *= -1.f;
 
 	void* uniformBufferData;
 	vkMapMemory(m_LogicalDevice, m_vecCommonMVPUniformBufferMemories[uiIdx], 0, sizeof(CommonMVPUniformBufferObject), 0, &uniformBufferData);

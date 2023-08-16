@@ -10,7 +10,7 @@ public:
 	Camera(const Camera& camera) = default;
 	Camera(float fFov, float fAspectRatio, float fNearClip, float fFarClip);
 
-	void Set(float fFov, float fAspectRatio, float fNearClip, float fFarClip);
+	void Init(float fFov, float fWidth, float fHeight, float fNearClip, float fFarClip);
 
 	bool IsKeyPressed(int nKeycode);
 	bool IsMouseButtonPressed(int nMouseButton);
@@ -22,14 +22,14 @@ public:
 
 	inline void SetWindow(GLFWwindow* pWindow) { m_pWindow = pWindow; }
 
-	inline float GetDistance() const { return m_fDistance; }
-	inline void SetDistance(float fDistance) { m_fDistance = fDistance; }
-
 	void SetViewportSize(float fWidth, float fHeight);
 
 	const glm::mat4& GetProjMatrix() const { return m_ProjMatrix; }
 	const glm::mat4& GetViewMatrix() const { return m_ViewMatrix; }
 	glm::mat4 GetViewProjMatrix() const { return m_ProjMatrix * m_ViewMatrix; }
+
+	glm::quat GetRotationQuat() const;
+	glm::mat4 GetRotationMatrix() const;
 
 	glm::vec3 GetUpDirection() const;
 	glm::vec3 GetRightDirection() const;
@@ -41,7 +41,10 @@ public:
 	const glm::vec3& GetFocalPoint() { return m_FocalPoint; }
 	void SetFocalPoint(const glm::vec3& pos) { m_FocalPoint = pos; }
 
-	glm::quat GetOrientation() const;
+	void SetFlipY(bool bFlipY) { m_bFlipY = bFlipY; }
+
+	float GetVerticalFOV() { return m_fVerticalFOV; }
+	float GetAspectRatio() { return m_fAspectRatio; }
 
 	float GetPitch() const { return m_fPitch; }
 	float GetYaw() const { return m_fYaw; }
@@ -52,15 +55,8 @@ public:
 	void UpdateProjection();
 
 private:
-	void MousePan(const glm::vec2& delta);
-	void MouseRotate(const glm::vec2& delta);
-	void MouseZoom(float fDelta);
-
-	glm::vec3 CalculatePosition() const;
-
-	std::pair<float, float> PanSpeed() const;
-	float RotateSpeed() const;
-	float ZoomSpeed() const;
+	void CameraRotate(const glm::vec2& delta);
+	void CameraZoom(float fDelta);
 
 private:
 	const glm::vec3 x_axis = { 1.f, 0.f, 0.f };
@@ -79,10 +75,8 @@ private:
 	glm::vec3 m_Position = { 0.f, 0.f, 5.f };
 	glm::vec3 m_FocalPoint = { 0.f, 0.f, 0.f };
 
-	float m_fDistance = 10.f;
-
-	float m_fPitch = 0.f;
 	float m_fYaw = 0.f;
+	float m_fPitch = 0.f;
 	float m_fRoll = 0.f;
 
 	float m_fViewportWidth = 1.f;
@@ -90,7 +84,7 @@ private:
 
 	glm::vec2 m_InititalMousePosition;
 
-	bool bFlipY = true;
+	bool m_bFlipY = false;
 
 	GLFWwindow* m_pWindow = nullptr;
 };
