@@ -5,6 +5,8 @@
 #include "Log.h"
 #include "VulkanUtils.h"
 
+#include <random>
+
 namespace DZW_VulkanWrap
 {
 	std::unique_ptr<Model> ModelFactor::CreateModel(VulkanRenderer* pRenderer, const std::filesystem::path& filepath)
@@ -64,13 +66,30 @@ namespace DZW_VulkanWrap
 						1.f - attr.texcoords[2 * static_cast<UINT64>(idx.texcoord_index) + 1],
 					};
 
-					vert.normal = {
-						attr.normals[3 * static_cast<UINT64>(idx.normal_index) + 0],
-						attr.normals[3 * static_cast<UINT64>(idx.normal_index) + 1],
-						attr.normals[3 * static_cast<UINT64>(idx.normal_index) + 2],
-					};
+					if (attr.normals.size() > 0)
+					{
+						vert.normal = {
+							attr.normals[3 * static_cast<UINT64>(idx.normal_index) + 0],
+							attr.normals[3 * static_cast<UINT64>(idx.normal_index) + 1],
+							attr.normals[3 * static_cast<UINT64>(idx.normal_index) + 2],
+						};
+					}
+					
+					std::random_device rd;
+					std::mt19937 gen(rd());
+					std::uniform_int_distribution<> dis(0, 255);
 
-					vert.color = { 1.f, 1.f, 1.f };
+					int red = dis(gen);
+					int green = dis(gen);
+					int blue = dis(gen);
+
+					vert.color = { red / 255.f, green / 255.f, blue / 255.f };
+
+					if (true) //vulkan flipY
+					{
+						vert.pos.y *= -1.f;
+						vert.normal.y *= -1.f;
+					}
 
 					m_vecVertices.push_back(vert);
 					m_vecIndices.push_back(static_cast<UINT>(m_vecIndices.size()));
@@ -457,6 +476,13 @@ namespace DZW_VulkanWrap
 						vert.normal = glm::normalize(glm::vec3(normalsBuffer ? glm::make_vec3(&normalsBuffer[v * 3]) : glm::vec3(0.0f)));
 						vert.texCoord = texCoordsBuffer ? glm::make_vec2(&texCoordsBuffer[v * 2]) : glm::vec3(0.0f);
 						vert.color = glm::vec3(1.0f);
+
+						if (true) //vulkan flipY
+						{
+							vert.pos.y *= -1.f;
+							vert.normal.y *= -1.f;
+						}
+
 						m_vecVertices.push_back(vert);
 					}
 				}

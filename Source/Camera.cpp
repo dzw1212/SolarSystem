@@ -6,11 +6,8 @@
 #define GLM_ENABLE_EXPERIMENTAL
 #include "glm/gtx/quaternion.hpp"
 
-Camera::Camera(float fFov, float fAspectRatio, float fNearClip, float fFarClip)
-	: m_fVerticalFOV(fFov), m_fAspectRatio(fAspectRatio), m_fNearClip(fNearClip), m_fFarClip(fFarClip)
-{
-}
-void Camera::Init(float fFov, float fWidth, float fHeight, float fNearClip, float fFarClip)
+void Camera::Init(float fFov, float fWidth, float fHeight, float fNearClip, float fFarClip,
+	GLFWwindow* pWindow, const glm::vec3& position, const glm::vec3& focalPoint, bool bFlipY)
 {
 	ASSERT(fHeight > 0.f);
 
@@ -20,9 +17,17 @@ void Camera::Init(float fFov, float fWidth, float fHeight, float fNearClip, floa
 	m_fViewportHeight = fHeight;
 	m_fNearClip = fNearClip;
 	m_fFarClip = fFarClip;
+	m_pWindow = pWindow;
+	m_Position = position;
+	m_FocalPoint = focalPoint;
+	m_bFlipY = bFlipY;
 
+
+	CalcYawPitch();
 	UpdateProjection();
 	UpdateView();
+
+
 }
 bool Camera::IsKeyPressed(int nKeycode)
 {
@@ -49,14 +54,54 @@ void Camera::Tick()
 	else if (IsMouseButtonPressed(GLFW_MOUSE_BUTTON_2))
 		CameraZoom(-5.f * delta.y);
 
-	//if (IsKeyPressed(GLFW_KEY_W))
-	//	MouseZoom(2.f);
-	//else if (IsKeyPressed(GLFW_KEY_A))
-	//	m_FocalPoint -= GetRightDirection() * 2.f;
-	//else if (IsKeyPressed(GLFW_KEY_D))
-	//	m_FocalPoint += GetRightDirection() * 2.f;
-	//else if (IsKeyPressed(GLFW_KEY_S))
-	//	MouseZoom(-2.f);
+	bool bPositionChange = false;
+	static float fLastTime = glfwGetTime();
+	float fCurrentTime = glfwGetTime();
+	float fDeltaTime = fCurrentTime - fLastTime;
+	fLastTime = fCurrentTime;
+
+	float fSpeed = 10.f;
+
+	if (IsKeyPressed(GLFW_KEY_W))
+	{
+		m_Position += fSpeed * fDeltaTime * GetForwardDirection();
+		m_FocalPoint += fSpeed * fDeltaTime * GetForwardDirection();
+		bPositionChange = true;
+	}
+	else if (IsKeyPressed(GLFW_KEY_S))
+	{
+		m_Position -= fSpeed * fDeltaTime * GetForwardDirection();
+		m_FocalPoint -= fSpeed * fDeltaTime * GetForwardDirection();
+		bPositionChange = true;
+	}
+	else if (IsKeyPressed(GLFW_KEY_A))
+	{
+		m_Position -= fSpeed * fDeltaTime * GetRightDirection();
+		m_FocalPoint -= fSpeed * fDeltaTime * GetRightDirection();
+		bPositionChange = true;
+	}
+	else if (IsKeyPressed(GLFW_KEY_D))
+	{
+		m_Position += fSpeed * fDeltaTime * GetRightDirection();
+		m_FocalPoint += fSpeed * fDeltaTime * GetRightDirection();
+		bPositionChange = true;
+	}
+	else if (IsKeyPressed(GLFW_KEY_Q))
+	{
+		m_Position += fSpeed * fDeltaTime * GetUpDirection();
+		m_FocalPoint += fSpeed * fDeltaTime * GetUpDirection();
+		bPositionChange = true;
+	}
+	else if (IsKeyPressed(GLFW_KEY_E))
+	{
+		m_Position -= fSpeed * fDeltaTime * GetUpDirection();
+		m_FocalPoint -= fSpeed * fDeltaTime * GetUpDirection();
+		bPositionChange = true;
+	}
+
+	if (bPositionChange)
+		UpdateView();
+
 }
 void Camera::OnMouseScroll(double offsetX, double offsetY)
 {
@@ -78,7 +123,10 @@ void Camera::SetViewportSize(float fWidth, float fHeight)
 }
 glm::quat Camera::GetRotationQuat() const
 {
-	return glm::quat(glm::vec3(glm::radians(m_fYaw), glm::radians(m_fPitch), glm::radians(m_fRoll)));
+	glm::quat qPitch = glm::angleAxis(glm::radians(m_fPitch), glm::vec3(1.0f, 0.0f, 0.0f));
+	glm::quat qYaw = glm::angleAxis(glm::radians(m_fYaw), glm::vec3(0.0f, 1.0f, 0.0f));
+	glm::quat qRoll = glm::angleAxis(glm::radians(m_fRoll), glm::vec3(0.0f, 0.0f, 1.0f));
+	return qYaw * qPitch * qRoll;
 }
 glm::mat4 Camera::GetRotationMatrix() const
 {
@@ -86,22 +134,32 @@ glm::mat4 Camera::GetRotationMatrix() const
 }
 glm::vec3 Camera::GetUpDirection() const
 {
-	return glm::rotate(GetRotationQuat(), y_axis);
+	return glm::rotate(GetRotationQuat(), world_y_axis) * (m_bFlipY ? -1.f : 1.f);
 }
 glm::vec3 Camera::GetRightDirection() const
 {
-	return glm::rotate(GetRotationQuat(), x_axis);
+	return glm::rotate(GetRotationQuat(), world_x_axis) * (m_bFlipY ? -1.f : 1.f);
 }
 glm::vec3 Camera::GetForwardDirection() const
 {
-	return glm::rotate(GetRotationQuat(), -1.f * z_axis);
+	return glm::normalize(m_FocalPoint - m_Position);
+}
+
+void Camera::CalcYawPitch()
+{
+	glm::vec3 forward = glm::normalize(m_Position - m_FocalPoint);
+
+	// 计算yaw和pitch, roll通常设为0
+	float yaw = atan2(forward.x, forward.z);
+	float pitch = asin(-1.f * forward.y);
+
+	// 转换为角度
+	m_fYaw = glm::degrees(yaw);
+    m_fPitch = glm::degrees(pitch);
 }
 
 void Camera::UpdateView()
 {
-	//auto transform = glm::translate(glm::mat4(1.f), m_Position) * glm::toMat4(GetRotationQuat());
-	//m_ViewMatrix = glm::inverse(transform);
-
 	m_ViewMatrix = glm::lookAt(m_Position, m_FocalPoint, GetUpDirection());
 }
 void Camera::UpdateProjection()
@@ -115,8 +173,8 @@ void Camera::UpdateProjection()
 
 void Camera::CameraRotate(const glm::vec2& delta)
 {
-	m_fYaw += delta.y * 90.f;
-	m_fPitch -= delta.x * 90.f;
+	m_fYaw += delta.x * 90.f;
+	m_fPitch += delta.y * 90.f;
 
 	float fCameraDistance = glm::distance(m_Position, m_FocalPoint);
 
@@ -127,5 +185,6 @@ void Camera::CameraRotate(const glm::vec2& delta)
 void Camera::CameraZoom(float fDelta)
 {
 	m_fVerticalFOV -= fDelta * 3.f;
+	m_fVerticalFOV = std::clamp(m_fVerticalFOV, 1.f, 135.f);
 	UpdateProjection();
 }

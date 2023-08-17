@@ -94,6 +94,8 @@ void VulkanRenderer::Init()
 
 	g_UI.Init(this);
 
+
+
 	/*******************独立资源*******************/
 
 	//OBJ Model
@@ -107,16 +109,18 @@ void VulkanRenderer::Init()
 	CreateCommonGraphicPipelineLayout();
 	CreateCommonGraphicPipeline();
 
-	//glTF Model
-	CreateGLTFShader();
+	m_testObjModel = DZW_VulkanWrap::ModelFactor::CreateModel(this, "./Assert/Model/spot_control_mesh.obj");
 
-	CreateGLTFDescriptorSetLayout();
-	CreateGLTFDescriptorPool();
+	////glTF Model
+	//CreateGLTFShader();
 
-	CreateGLTFGraphicPipelineLayout();
-	CreateGLTFGraphicPipeline();
+	//CreateGLTFDescriptorSetLayout();
+	//CreateGLTFDescriptorPool();
 
-	m_testGLTFModel = DZW_VulkanWrap::ModelFactor::CreateModel(this, "./Assert/Model/FlightHelmet/glTF/FlightHelmet.gltf");
+	//CreateGLTFGraphicPipelineLayout();
+	//CreateGLTFGraphicPipeline();
+
+	//m_testGLTFModel = DZW_VulkanWrap::ModelFactor::CreateModel(this, "./Assert/Model/FlightHelmet/glTF/FlightHelmet.gltf");
 	
 	//LoadPlanetInfo();
 
@@ -218,7 +222,7 @@ void VulkanRenderer::Clean()
 {
 	g_UI.Clean();
 
-
+	m_testObjModel.reset();
 	////Skybox
 	//FreeTexture(m_SkyboxTexture);
 
@@ -2042,11 +2046,8 @@ void VulkanRenderer::CreateSyncObjects()
 
 void VulkanRenderer::SetupCamera()
 {
-	m_Camera.SetWindow(m_pWindow);
-	m_Camera.SetPosition({ 0.f, 0.f, 3.f });
-	m_Camera.SetFocalPoint({ 0.f, 0.f, 0.f });
-	m_Camera.SetFlipY(false);
-	m_Camera.Init(45.f, static_cast<float>(m_SwapChainExtent2D.width), static_cast<float>(m_SwapChainExtent2D.height), 0.1f, 10000.f);
+	m_Camera.Init(45.f, static_cast<float>(m_SwapChainExtent2D.width), static_cast<float>(m_SwapChainExtent2D.height), 0.1f, 10000.f,
+		m_pWindow, { 0.f, 0.f, -10.f }, { 0.f, 0.f, 0.f }, true);
 
 	glfwSetWindowUserPointer(m_pWindow, (void*)&m_Camera);
 
@@ -3059,7 +3060,7 @@ void VulkanRenderer::RecordCommandBuffer(VkCommandBuffer& commandBuffer, UINT ui
 
 	//UpdateUniformBuffer(m_uiCurFrameIdx);
 
-	//UpdateCommonMVPUniformBuffer(m_uiCurFrameIdx);
+	UpdateCommonMVPUniformBuffer(m_uiCurFrameIdx);
 
 	//if (m_bEnableSkybox)
 	//	UpdateSkyboxUniformBuffer(m_uiCurFrameIdx);
@@ -3256,7 +3257,9 @@ void VulkanRenderer::RecordCommandBuffer(VkCommandBuffer& commandBuffer, UINT ui
 	//	vkCmdDrawIndexed(commandBuffer, static_cast<UINT>(m_Model.m_vecIndices.size()), 1, 0, 0, 0);
 	//}
 
-	m_testGLTFModel->Draw(commandBuffer, m_GLTFGraphicPipeline, m_GLTFGraphicPipelineLayout, m_vecCommonDescriptorSets[uiIdx]);
+	m_testObjModel->Draw(commandBuffer, m_CommonGraphicPipeline, m_CommonGraphicPipelineLayout, m_vecCommonDescriptorSets[uiIdx]);
+
+	//m_testGLTFModel->Draw(commandBuffer, m_GLTFGraphicPipeline, m_GLTFGraphicPipelineLayout, m_vecCommonDescriptorSets[uiIdx]);
 
 	g_UI.Render(uiIdx);
 
@@ -4700,7 +4703,7 @@ void VulkanRenderer::CreateCommonGraphicPipeline()
 	rasterizationStateCreateInfo.polygonMode = VK_POLYGON_MODE_FILL;	//图元模式，可以是FILL、LINE、POINT
 	rasterizationStateCreateInfo.lineWidth = 1.f;	//指定光栅化后的线段宽度
 	rasterizationStateCreateInfo.cullMode = VK_CULL_MODE_BACK_BIT;	//剔除模式，可以是NONE、FRONT、BACK、FRONT_AND_BACK
-	rasterizationStateCreateInfo.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE; //顶点序，可以是顺时针cw或逆时针ccw
+	rasterizationStateCreateInfo.frontFace = VK_FRONT_FACE_CLOCKWISE; //顶点序，可以是顺时针cw或逆时针ccw
 	rasterizationStateCreateInfo.depthBiasEnable = VK_FALSE; //深度偏移，一般用于Shaodw Map中避免阴影痤疮
 	rasterizationStateCreateInfo.depthBiasConstantFactor = 0.f;
 	rasterizationStateCreateInfo.depthBiasClamp = 0.f;
