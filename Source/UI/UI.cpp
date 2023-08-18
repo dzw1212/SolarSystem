@@ -132,10 +132,6 @@ void UI::Draw()
     ImGui::Begin("Stat");
     ImGui::Text("FPS: %d", m_pRenderer->GetFPS());
 
-    static float fLod = 0.f;
-    if (ImGui::SliderFloat("Texture Lod", &fLod, 0.f, static_cast<float>(m_pRenderer->GetTextureMaxLod()), "%.1f"))
-        m_pRenderer->SetTextureLod(fLod);
-
     if (ImGui::CollapsingHeader("Skybox", ImGuiTreeNodeFlags_DefaultOpen))
     {
         ImGui::Checkbox("Enable##Skybox", m_pRenderer->GetSkyboxEnable());

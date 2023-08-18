@@ -176,6 +176,8 @@ void Camera::CameraRotate(const glm::vec2& delta)
 	m_fYaw += delta.x * 90.f;
 	m_fPitch += delta.y * 90.f;
 
+	m_fPitch = std::clamp(m_fPitch, -89.f, 89.f);
+
 	float fCameraDistance = glm::distance(m_Position, m_FocalPoint);
 
 	m_Position = m_FocalPoint + GetRotationQuat() * glm::vec3(0.f, 0.f, fCameraDistance);

@@ -17,16 +17,13 @@
 #include "ktx.h"
 #include "ktxvulkan.h"
 
-#define TINYOBJLOADER_IMPLEMENTATION
-#include <tiny_obj_loader.h>
-
-#define TINYGLTF_IMPLEMENTATION
-#define STB_IMAGE_IMPLEMENTATION
-#define STB_IMAGE_WRITE_IMPLEMENTATION
-// #define TINYGLTF_NOEXCEPTION // optional. disable exception handling.
-#include "tiny_gltf.h"
 
 class VulkanRenderer;
+
+namespace tinygltf
+{
+	class Model;
+}
 
 struct Vertex3D
 {
@@ -174,7 +171,7 @@ namespace DZW_VulkanWrap
 	public:
 		Texture(VulkanRenderer* pRenderer, const std::filesystem::path& filepath)
 			: m_pRenderer(pRenderer), m_Filepath(filepath) {}
-		virtual ~Texture();
+		~Texture();
 
 		enum class TextureType : UCHAR
 		{
@@ -203,10 +200,10 @@ namespace DZW_VulkanWrap
 		UINT m_uiFaceNum = 0;
 	public:
 		//vulkan resource
-		VkImage m_Image;
-		VkImageView m_ImageView;
-		VkDeviceMemory m_Memory;
-		VkSampler m_Sampler;
+		VkImage m_Image = VK_NULL_HANDLE;
+		VkImageView m_ImageView = VK_NULL_HANDLE;
+		VkDeviceMemory m_Memory = VK_NULL_HANDLE;
+		VkSampler m_Sampler = VK_NULL_HANDLE;
 	};
 
 	class NormalTexture : public Texture
@@ -253,6 +250,13 @@ namespace DZW_VulkanWrap
 	public:
 		VulkanRenderer* m_pRenderer = nullptr;
 		std::filesystem::path m_Filepath;
+
+		std::vector<Vertex3D> m_vecVertices;
+		VkBuffer m_VertexBuffer = VK_NULL_HANDLE;
+		VkDeviceMemory m_VertexBufferMemory = VK_NULL_HANDLE;
+		std::vector<UINT> m_vecIndices;
+		VkBuffer m_IndexBuffer = VK_NULL_HANDLE;
+		VkDeviceMemory m_IndexBufferMemory = VK_NULL_HANDLE;
 	};
 
 	class OBJModel : public Model
@@ -264,17 +268,8 @@ namespace DZW_VulkanWrap
 		virtual ModelType GetType() { return ModelType::MODEL_TYPE_OBJ; }
 
 		virtual void Draw(VkCommandBuffer& commandBuffer, VkPipeline& pipeline, VkPipelineLayout& pipelineLayout);
-	private:
-		std::vector<Vertex3D> m_vecVertices;
-		std::vector<UINT> m_vecIndices;
+	
 	private: 
-		//vulkan resource, need release
-		VkBuffer m_VertexBuffer = VK_NULL_HANDLE;
-		VkDeviceMemory m_VertexBufferMemory = VK_NULL_HANDLE;
-
-		VkBuffer m_IndexBuffer = VK_NULL_HANDLE;
-		VkDeviceMemory m_IndexBufferMemory = VK_NULL_HANDLE;
-
 		VkDescriptorSet m_DescriptorSet;
 	};
 
@@ -362,7 +357,7 @@ namespace DZW_VulkanWrap
 
 		virtual ModelType GetType() { return ModelType::MODEL_TYPE_GLTF; }
 
-		virtual void Draw(VkCommandBuffer& commandBuffer, VkPipeline& pipeline, VkPipelineLayout& pipelineLayout, VkDescriptorSet& descriptorSet);
+		virtual void Draw(VkCommandBuffer& commandBuffer, VkPipeline& pipeline, VkPipelineLayout& pipelineLayout);
 
 		void DrawNode(int nNodeIdx, VkCommandBuffer& commandBuffer, VkPipeline& pipeline, VkPipelineLayout& pipelineLayout);
 	private:
@@ -383,14 +378,6 @@ namespace DZW_VulkanWrap
 		std::vector<Material> m_vecMaterials;
 		std::vector<Node> m_vecNodes;
 		std::vector<Mesh> m_vecMeshes;
-
-		//为了GPU效率，将所有Vertex和Index放在一起
-		std::vector<Vertex3D> m_vecVertices;
-		VkBuffer m_VertexBuffer;
-		VkDeviceMemory m_VertexBufferMemory;
-		std::vector<UINT> m_vecIndices;
-		VkBuffer m_IndexBuffer;
-		VkDeviceMemory m_IndexBufferMemory;
 	};
 
 	class ModelFactor

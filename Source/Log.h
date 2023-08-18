@@ -14,36 +14,31 @@ private:
 public:
 	template<typename... Args>
 	static void Critical(const std::string& format, Args... args) {
-		std::string strMsg = std::format(format, args...);
-		m_FileLogger->critical(strMsg);
-		m_ConsoleLogger->critical(strMsg);
+		m_FileLogger->critical(format, args...);
+		m_ConsoleLogger->critical(format, args...);
 	}
 	
 	template<typename... Args>
 	static void Error(const std::string& format, Args... args) {
-		std::string strMsg = std::format(format, args...);
-		m_FileLogger->error(strMsg);
-		m_ConsoleLogger->error(strMsg);
+		m_FileLogger->error(format, args...);
+		m_ConsoleLogger->error(format, args...);
 	}
 
 	template<typename... Args>
 	static void Info(const std::string& format, Args... args) {
-		std::string strMsg = std::format(format, args...);
-		m_FileLogger->info(strMsg);
-		m_ConsoleLogger->info(strMsg);
+		m_FileLogger->info(format, args...);
+		m_ConsoleLogger->info(format, args...);
 	}
 
 	template<typename... Args>
 	static void Warn(const std::string& format, Args... args) {
-		std::string strMsg = std::format(format, args...);
-		m_FileLogger->warn(strMsg);
-		m_ConsoleLogger->warn(strMsg);
+		m_FileLogger->warn(format, args...);
+		m_ConsoleLogger->warn(format, args...);
 	}
 
 	template<typename... Args>
 	static void Trace(const std::string& format, Args... args) {
-		std::string strMsg = std::format(format, args...);
-		m_FileLogger->trace(strMsg);
-		m_ConsoleLogger->trace(strMsg);
+		m_FileLogger->trace(format, args...);
+		m_ConsoleLogger->trace(format, args...);
 	}
 };

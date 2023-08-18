@@ -1,6 +1,5 @@
 #pragma once
 
-
 #define GLFW_INCLUDE_VULKAN
 #include "GLFW/glfw3.h"
 
@@ -295,7 +294,7 @@ public:
 
 	void CreateCommonShader();
 
-	void CreateCommonMVPUniformBuffers();
+	void CreateCommonMVPUniformBufferAndMemory();
 	void UpdateCommonMVPUniformBuffer(UINT uiIdx);
 
 	void CreateCommonDescriptorSetLayout();
@@ -303,6 +302,9 @@ public:
 
 	void CreateCommonGraphicPipelineLayout();
 	void CreateCommonGraphicPipeline();
+
+public:
+	
 
 public:
 	void CreateGLTFShader();
@@ -545,8 +547,8 @@ private:
 	//用于绘制OBJ模型，不涉及贴图
 	std::unordered_map<VkShaderStageFlagBits, VkShaderModule> m_mapCommonShaderModule;
 
-	std::vector<VkBuffer> m_vecCommonMVPUniformBuffers;
-	std::vector<VkDeviceMemory> m_vecCommonMVPUniformBufferMemories;
+	VkBuffer m_CommonMVPUniformBuffer;
+	VkDeviceMemory m_CommonMVPUniformBufferMemory;
 	CommonMVPUniformBufferObject m_CommonMVPUboData;
 
 	VkDescriptorSetLayout m_CommonDescriptorSetLayout;

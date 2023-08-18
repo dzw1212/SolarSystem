@@ -1,11 +1,23 @@
 #include "VulkanWrap.h"
 #include "VulkanRenderer.h"
 
-#include "tiny_obj_loader.h"
 #include "Log.h"
 #include "VulkanUtils.h"
 
 #include <random>
+
+#define TINYOBJLOADER_IMPLEMENTATION
+#include <tiny_obj_loader.h>
+
+//#define STB_IMAGE_IMPLEMENTATION
+//#define STB_IMAGE_WRITE_IMPLEMENTATION
+//#include "stb_image.h"
+
+#define TINYGLTF_IMPLEMENTATION
+#define STB_IMAGE_IMPLEMENTATION
+#define STB_IMAGE_WRITE_IMPLEMENTATION
+// #define TINYGLTF_NOEXCEPTION // optional. disable exception handling.
+#include "tiny_gltf.h"
 
 namespace DZW_VulkanWrap
 {
@@ -152,21 +164,21 @@ namespace DZW_VulkanWrap
 		: Texture(pRenderer, filepath)
 	{
 		ktxResult result;
-		ktxTexture* ktxTexture;
-		result = ktxTexture_CreateFromNamedFile(m_Filepath.string().c_str(), KTX_TEXTURE_CREATE_LOAD_IMAGE_DATA_BIT, &ktxTexture);
+		ktxTexture* pKtxTexture;
+		result = ktxTexture_CreateFromNamedFile(m_Filepath.string().c_str(), KTX_TEXTURE_CREATE_LOAD_IMAGE_DATA_BIT, &pKtxTexture);
 		ASSERT(result == KTX_SUCCESS, "ktx load image {} failed", m_Filepath.string());
 
-		ASSERT(ktxTexture->glFormat == GL_RGBA);
-		ASSERT(ktxTexture->numDimensions == 2);
+		ASSERT(pKtxTexture->glFormat == GL_RGBA);
+		ASSERT(pKtxTexture->numDimensions == 2);
 
-		ktx_uint8_t* ktxTextureData = ktxTexture_GetData(ktxTexture);
-		m_Size = ktxTexture_GetSize(ktxTexture);
+		ktx_uint8_t* ktxTextureData = ktxTexture_GetData(pKtxTexture);
+		m_Size = ktxTexture_GetSize(pKtxTexture);
 
-		m_uiWidth = ktxTexture->baseWidth;
-		m_uiHeight = ktxTexture->baseHeight;
-		m_uiMipLevelNum = ktxTexture->numLevels;
-		m_uiLayerNum = ktxTexture->numLayers;
-		m_uiFaceNum = ktxTexture->numFaces;
+		m_uiWidth = pKtxTexture->baseWidth;
+		m_uiHeight = pKtxTexture->baseHeight;
+		m_uiMipLevelNum = pKtxTexture->numLevels;
+		m_uiLayerNum = pKtxTexture->numLayers;
+		m_uiFaceNum = pKtxTexture->numFaces;
 
 		if (IsTextureArray())
 		{
@@ -186,9 +198,9 @@ namespace DZW_VulkanWrap
 			VK_IMAGE_LAYOUT_UNDEFINED,
 			VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
 
-		TransferImageDataByStageBuffer(ktxTextureData, m_Size, m_Image, m_uiWidth, m_uiHeight, ktxTexture);
+		TransferImageDataByStageBuffer(ktxTextureData, m_Size, m_Image, m_uiWidth, m_uiHeight, pKtxTexture);
 
-		ktxTexture_Destroy(ktxTexture);
+		ktxTexture_Destroy(pKtxTexture);
 
 		m_pRenderer->ChangeImageLayout(m_Image,
 			VK_FORMAT_R8G8B8A8_SRGB,
@@ -376,7 +388,7 @@ namespace DZW_VulkanWrap
 
 		//ubo
 		VkDescriptorBufferInfo descriptorBufferInfo{};
-		descriptorBufferInfo.buffer = m_pRenderer->m_vecCommonMVPUniformBuffers[0];
+		descriptorBufferInfo.buffer = m_pRenderer->m_CommonMVPUniformBuffer;
 		descriptorBufferInfo.offset = 0;
 		descriptorBufferInfo.range = sizeof(VulkanRenderer::CommonMVPUniformBufferObject);
 
@@ -479,7 +491,7 @@ namespace DZW_VulkanWrap
 		vkFreeMemory(m_pRenderer->m_LogicalDevice, m_IndexBufferMemory, nullptr);
 	}
 
-	void GLTFModel::Draw(VkCommandBuffer& commandBuffer, VkPipeline& pipeline, VkPipelineLayout& pipelineLayout, VkDescriptorSet& descriptorSet)
+	void GLTFModel::Draw(VkCommandBuffer& commandBuffer, VkPipeline& pipeline, VkPipelineLayout& pipelineLayout)
 	{
 		vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
 		VkBuffer vertexBuffers[] = {
@@ -824,81 +836,86 @@ namespace DZW_VulkanWrap
 				if (primitive.m_nMaterialIdx != -1)
 				{
 					auto& material = m_vecMaterials[primitive.m_nMaterialIdx];
-					auto& baseColorTexture = m_vecTextures[material.m_nBaseColotTextureIdx];
-					auto& normalTexture = m_vecTextures[material.m_nNormalTextureIdx];
-					auto& occlusionMetallicRoughnessTexture = m_vecTextures[material.m_nMetallicRoughnessTextureIdx]; //默认occlusionTexture与metallicRoughnessTexture一致
+					if (material.m_nBaseColotTextureIdx != -1 
+						&& material.m_nNormalTextureIdx != -1 
+						&& material.m_nMetallicRoughnessTextureIdx != -1)
+					{
+						auto& baseColorTexture = m_vecTextures[material.m_nBaseColotTextureIdx];
+						auto& normalTexture = m_vecTextures[material.m_nNormalTextureIdx];
+						auto& occlusionMetallicRoughnessTexture = m_vecTextures[material.m_nMetallicRoughnessTextureIdx]; //默认occlusionTexture与metallicRoughnessTexture一致
 
-					auto& baseColorImage = m_vecImages[baseColorTexture.m_nImageIdx];
-					auto& normalImage = m_vecImages[normalTexture.m_nImageIdx];
-					auto& occlusionMetallicRoughnessImage = m_vecImages[occlusionMetallicRoughnessTexture.m_nImageIdx];
+						auto& baseColorImage = m_vecImages[baseColorTexture.m_nImageIdx];
+						auto& normalImage = m_vecImages[normalTexture.m_nImageIdx];
+						auto& occlusionMetallicRoughnessImage = m_vecImages[occlusionMetallicRoughnessTexture.m_nImageIdx];
 
-					auto& baseColorSampler = m_vecSamplers[0];
-					if (baseColorTexture.m_nSamplerIdx != -1)
-						baseColorSampler = m_vecSamplers[baseColorTexture.m_nSamplerIdx];
-					auto& normalSampler = m_vecSamplers[0];
-					if (normalTexture.m_nSamplerIdx != -1)
-						normalSampler = m_vecSamplers[normalTexture.m_nSamplerIdx];
-					auto& occlusionMetallicRoughnessSampler = m_vecSamplers[0];
-					if (occlusionMetallicRoughnessTexture.m_nSamplerIdx != -1)
-						occlusionMetallicRoughnessSampler = m_vecSamplers[occlusionMetallicRoughnessTexture.m_nSamplerIdx];
+						auto& baseColorSampler = m_vecSamplers[0];
+						if (baseColorTexture.m_nSamplerIdx != -1)
+							baseColorSampler = m_vecSamplers[baseColorTexture.m_nSamplerIdx];
+						auto& normalSampler = m_vecSamplers[0];
+						if (normalTexture.m_nSamplerIdx != -1)
+							normalSampler = m_vecSamplers[normalTexture.m_nSamplerIdx];
+						auto& occlusionMetallicRoughnessSampler = m_vecSamplers[0];
+						if (occlusionMetallicRoughnessTexture.m_nSamplerIdx != -1)
+							occlusionMetallicRoughnessSampler = m_vecSamplers[occlusionMetallicRoughnessTexture.m_nSamplerIdx];
 
-					VkDescriptorSetAllocateInfo allocInfo{};
-					allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
-					allocInfo.descriptorSetCount = 1;
-					allocInfo.descriptorPool = m_pRenderer->m_GLTFDescriptorPool;
-					allocInfo.pSetLayouts = &m_pRenderer->m_GLTFDescriptorSetLayout;
+						VkDescriptorSetAllocateInfo allocInfo{};
+						allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+						allocInfo.descriptorSetCount = 1;
+						allocInfo.descriptorPool = m_pRenderer->m_GLTFDescriptorPool;
+						allocInfo.pSetLayouts = &m_pRenderer->m_GLTFDescriptorSetLayout;
 
-					VULKAN_ASSERT(vkAllocateDescriptorSets(m_pRenderer->m_LogicalDevice, &allocInfo, &(primitive.m_DescriptorSet)), "Allocate gltf desctiprot set failed");
+						VULKAN_ASSERT(vkAllocateDescriptorSets(m_pRenderer->m_LogicalDevice, &allocInfo, &(primitive.m_DescriptorSet)), "Allocate gltf desctiprot set failed");
 
-					//baseColor sampler
-					VkDescriptorImageInfo baseColorImageInfo{};
-					baseColorImageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-					baseColorImageInfo.imageView = baseColorImage.m_ImageView;
-					baseColorImageInfo.sampler = baseColorSampler.m_Sampler;
-					VkWriteDescriptorSet baseColorSamplerWrite{};
-					baseColorSamplerWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-					baseColorSamplerWrite.dstSet = primitive.m_DescriptorSet;
-					baseColorSamplerWrite.dstBinding = 0;
-					baseColorSamplerWrite.dstArrayElement = 0;
-					baseColorSamplerWrite.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-					baseColorSamplerWrite.descriptorCount = 1;
-					baseColorSamplerWrite.pImageInfo = &baseColorImageInfo;
+						//baseColor sampler
+						VkDescriptorImageInfo baseColorImageInfo{};
+						baseColorImageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+						baseColorImageInfo.imageView = baseColorImage.m_ImageView;
+						baseColorImageInfo.sampler = baseColorSampler.m_Sampler;
+						VkWriteDescriptorSet baseColorSamplerWrite{};
+						baseColorSamplerWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+						baseColorSamplerWrite.dstSet = primitive.m_DescriptorSet;
+						baseColorSamplerWrite.dstBinding = 0;
+						baseColorSamplerWrite.dstArrayElement = 0;
+						baseColorSamplerWrite.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+						baseColorSamplerWrite.descriptorCount = 1;
+						baseColorSamplerWrite.pImageInfo = &baseColorImageInfo;
 
-					//normal sampler
-					VkDescriptorImageInfo normalImageInfo{};
-					normalImageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-					normalImageInfo.imageView = normalImage.m_ImageView;
-					normalImageInfo.sampler = normalSampler.m_Sampler;
-					VkWriteDescriptorSet normalSamplerWrite{};
-					normalSamplerWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-					normalSamplerWrite.dstSet = primitive.m_DescriptorSet;
-					normalSamplerWrite.dstBinding = 1;
-					normalSamplerWrite.dstArrayElement = 0;
-					normalSamplerWrite.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-					normalSamplerWrite.descriptorCount = 1;
-					normalSamplerWrite.pImageInfo = &normalImageInfo;
+						//normal sampler
+						VkDescriptorImageInfo normalImageInfo{};
+						normalImageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+						normalImageInfo.imageView = normalImage.m_ImageView;
+						normalImageInfo.sampler = normalSampler.m_Sampler;
+						VkWriteDescriptorSet normalSamplerWrite{};
+						normalSamplerWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+						normalSamplerWrite.dstSet = primitive.m_DescriptorSet;
+						normalSamplerWrite.dstBinding = 1;
+						normalSamplerWrite.dstArrayElement = 0;
+						normalSamplerWrite.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+						normalSamplerWrite.descriptorCount = 1;
+						normalSamplerWrite.pImageInfo = &normalImageInfo;
 
-					//ouulusion+metallic+roughness sampler
-					VkDescriptorImageInfo omrImageInfo{};
-					omrImageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-					omrImageInfo.imageView = occlusionMetallicRoughnessImage.m_ImageView;
-					omrImageInfo.sampler = occlusionMetallicRoughnessSampler.m_Sampler;
-					VkWriteDescriptorSet omrSamplerWrite{};
-					omrSamplerWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-					omrSamplerWrite.dstSet = primitive.m_DescriptorSet;
-					omrSamplerWrite.dstBinding = 2;
-					omrSamplerWrite.dstArrayElement = 0;
-					omrSamplerWrite.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-					omrSamplerWrite.descriptorCount = 1;
-					omrSamplerWrite.pImageInfo = &omrImageInfo;
+						//ouulusion+metallic+roughness sampler
+						VkDescriptorImageInfo omrImageInfo{};
+						omrImageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+						omrImageInfo.imageView = occlusionMetallicRoughnessImage.m_ImageView;
+						omrImageInfo.sampler = occlusionMetallicRoughnessSampler.m_Sampler;
+						VkWriteDescriptorSet omrSamplerWrite{};
+						omrSamplerWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+						omrSamplerWrite.dstSet = primitive.m_DescriptorSet;
+						omrSamplerWrite.dstBinding = 2;
+						omrSamplerWrite.dstArrayElement = 0;
+						omrSamplerWrite.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+						omrSamplerWrite.descriptorCount = 1;
+						omrSamplerWrite.pImageInfo = &omrImageInfo;
 
-					std::vector<VkWriteDescriptorSet> vecDescriptorWrite = {
-						baseColorSamplerWrite,
-						normalSamplerWrite,
-						omrSamplerWrite,
-					};
+						std::vector<VkWriteDescriptorSet> vecDescriptorWrite = {
+							baseColorSamplerWrite,
+							normalSamplerWrite,
+							omrSamplerWrite,
+						};
 
-					vkUpdateDescriptorSets(m_pRenderer->m_LogicalDevice, static_cast<UINT>(vecDescriptorWrite.size()), vecDescriptorWrite.data(), 0, nullptr);
+						vkUpdateDescriptorSets(m_pRenderer->m_LogicalDevice, static_cast<UINT>(vecDescriptorWrite.size()), vecDescriptorWrite.data(), 0, nullptr);
+					}
 				}
 				
 				mesh.vecPrimitives.push_back(primitive);
