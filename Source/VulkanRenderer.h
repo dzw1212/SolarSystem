@@ -100,6 +100,11 @@ public:
 	friend class DZW_VulkanWrap::OBJModel;
 	friend class DZW_VulkanWrap::GLTFModel;
 
+	friend class DZW_VulkanWrap::Texture;
+	friend class DZW_VulkanWrap::NormalTexture;
+	friend class DZW_VulkanWrap::KTXTexture;
+
+
 private:
 	static void FrameBufferResizeCallBack(GLFWwindow* pWindow, int nWidth, int nHeight);
 	static void MouseButtonCallBack(GLFWwindow* pWindow, int nButton, int nAction, int nMods);
@@ -196,10 +201,8 @@ private:
 		VkImage& image, VkDeviceMemory& imageMemory);
 	bool CheckFormatHasStencilComponent(VkFormat format);
 	void ChangeImageLayout(VkImage image, VkFormat format, UINT uiMipLevelCount, UINT uiLayerCount, UINT uiFaceCount, VkImageLayout oldLayout, VkImageLayout newLayout);
-	void TransferImageDataByStageBuffer(const void* pData, VkDeviceSize imageSize, VkImage& image, UINT uiWidth, UINT uiHeight, DZW_VulkanWrap::Texture& texture, ktxTexture* pKtxTexture);
 	void TransferImageDataByStageBuffer(const void* pData, VkDeviceSize imageSize, VkImage& image, UINT uiWidth, UINT uiHeight);
 	
-
 	void CreateDescriptorSetLayout();
 	void CreateDescriptorPool();
 	void CreateDescriptorSets();
@@ -221,10 +224,6 @@ private:
 	void Render();
 
 	void WindowResize();
-
-private:
-	void LoadTexture(const std::filesystem::path& filepath, DZW_VulkanWrap::Texture& texture);
-	void FreeTexture(DZW_VulkanWrap::Texture& texture);
 
 public:
 	std::vector<PlanetInfo> m_vecPlanetInfo;
@@ -266,7 +265,7 @@ public:
 
 
 	void SetTextureLod(float fLod) { m_UboData.lod = fLod; }
-	UINT GetTextureMaxLod() { return m_Texture.m_uiMipLevelNum; }
+	//UINT GetTextureMaxLod() { return m_Texture.m_uiMipLevelNum; }
 
 	VkCommandBuffer& GetCommandBuffer(UINT uiIdx) { return m_vecCommandBuffers[uiIdx]; }
 
@@ -301,7 +300,6 @@ public:
 
 	void CreateCommonDescriptorSetLayout();
 	void CreateCommonDescriptorPool();
-	void CreateCommonDescriptorSets();
 
 	void CreateCommonGraphicPipelineLayout();
 	void CreateCommonGraphicPipeline();
@@ -582,7 +580,7 @@ private:
 	UniformBufferObject m_UboData;
 	size_t m_UboBufferSize;
 
-	DZW_VulkanWrap::Texture m_Texture;
+	//DZW_VulkanWrap::Texture m_Texture;
 
 	VkDescriptorSetLayout m_DescriptorSetLayout;
 	VkDescriptorPool m_DescriptorPool;
@@ -598,7 +596,8 @@ private:
 	//Skybox
 	bool m_bEnableSkybox = true;
 	float m_fSkyboxRotateSpeed = 1.f;
-	DZW_VulkanWrap::Texture m_SkyboxTexture;
+	std::unique_ptr<DZW_VulkanWrap::Model> m_SkyboxModel;
+	std::unique_ptr<DZW_VulkanWrap::Texture> m_SkyboxTexture;
 	std::unordered_map<VkShaderStageFlagBits, VkShaderModule> m_mapSkyboxShaderModule;
 	SkyboxUniformBufferObject m_SkyboxUboData;
 	std::vector<VkBuffer> m_vecSkyboxUniformBuffers;

@@ -4,7 +4,6 @@
 #include "Core.h"
 
 #include <filesystem>
-#include "ktx.h"
 
 #define GLM_FORCE_RADIANS
 #define GLM_FORCE_DEPTH_ZERO_TO_ONE
@@ -15,6 +14,16 @@
 #include "glm/gtc/matrix_transform.hpp"
 #include "glm/gtc/type_ptr.hpp"
 
+#include "ktx.h"
+#include "ktxvulkan.h"
+
+#define TINYOBJLOADER_IMPLEMENTATION
+#include <tiny_obj_loader.h>
+
+#define TINYGLTF_IMPLEMENTATION
+#define STB_IMAGE_IMPLEMENTATION
+#define STB_IMAGE_WRITE_IMPLEMENTATION
+// #define TINYGLTF_NOEXCEPTION // optional. disable exception handling.
 #include "tiny_gltf.h"
 
 class VulkanRenderer;
@@ -160,26 +169,71 @@ namespace DZW_MathWrap
 
 namespace DZW_VulkanWrap
 {
-	struct Texture
+	class Texture
 	{
+	public:
+		Texture(VulkanRenderer* pRenderer, const std::filesystem::path& filepath)
+			: m_pRenderer(pRenderer), m_Filepath(filepath) {}
+		virtual ~Texture();
+
+		enum class TextureType : UCHAR
+		{
+			TEXTURE_TYPE_KTX,
+			TEXTURE_TYPE_NORMAL,
+		};
+
+		virtual TextureType GetType() = 0;
+
+		bool IsTextureArray() { return m_uiLayerNum > 1; }
+		bool IsCubemapTexture() { return m_uiFaceNum == 6; }
+
+		void CreateImage();
+		void CreateImageView();
+		void CreateSampler();
+
+	public:
 		std::filesystem::path m_Filepath;
+		VulkanRenderer* m_pRenderer = nullptr;
+
 		size_t m_Size = 0;
 		UINT m_uiWidth = 0;
 		UINT m_uiHeight = 0;
 		UINT m_uiMipLevelNum = 0;
 		UINT m_uiLayerNum = 0;
 		UINT m_uiFaceNum = 0;
+	public:
+		//vulkan resource
 		VkImage m_Image;
 		VkImageView m_ImageView;
 		VkDeviceMemory m_Memory;
 		VkSampler m_Sampler;
-
-		bool IsKtxTexture() { return m_Filepath.extension() == ".ktx"; }
-
-		bool IsTextureArray() { return m_uiLayerNum > 1; }
-
-		bool IsCubemapTexture() { return m_uiFaceNum == 6; }
 	};
+
+	class NormalTexture : public Texture
+	{
+	public:
+		NormalTexture(VulkanRenderer* pRenderer, const std::filesystem::path& filepath);
+
+		virtual TextureType GetType() { return TextureType::TEXTURE_TYPE_KTX; }
+	};
+
+	class KTXTexture : public Texture
+	{
+	public:
+		KTXTexture(VulkanRenderer* pRenderer, const std::filesystem::path& filepath);
+
+		virtual TextureType GetType() { return TextureType::TEXTURE_TYPE_KTX; }
+	
+	private:
+		void TransferImageDataByStageBuffer(const void* pData, VkDeviceSize imageSize, VkImage& image, UINT uiWidth, UINT uiHeight, ktxTexture* pKtxTextue);
+	};
+
+	class TextureFactor
+	{
+	public:
+		static std::unique_ptr<Texture> CreateTexture(VulkanRenderer* pRenderer, const std::filesystem::path& filepath);
+	};
+
 
 	class Model
 	{
@@ -195,7 +249,7 @@ namespace DZW_VulkanWrap
 		};
 
 		virtual ModelType GetType() = 0;
-		virtual void Draw(VkCommandBuffer& commandBuffer, VkPipeline& pipeline, VkPipelineLayout& pipelineLayout, VkDescriptorSet& descriptorSet) = 0;
+		virtual void Draw(VkCommandBuffer& commandBuffer, VkPipeline& pipeline, VkPipelineLayout& pipelineLayout) = 0;
 	public:
 		VulkanRenderer* m_pRenderer = nullptr;
 		std::filesystem::path m_Filepath;
@@ -209,7 +263,7 @@ namespace DZW_VulkanWrap
 
 		virtual ModelType GetType() { return ModelType::MODEL_TYPE_OBJ; }
 
-		virtual void Draw(VkCommandBuffer& commandBuffer, VkPipeline& pipeline, VkPipelineLayout& pipelineLayout, VkDescriptorSet& descriptorSet);
+		virtual void Draw(VkCommandBuffer& commandBuffer, VkPipeline& pipeline, VkPipelineLayout& pipelineLayout);
 	private:
 		std::vector<Vertex3D> m_vecVertices;
 		std::vector<UINT> m_vecIndices;
@@ -220,6 +274,8 @@ namespace DZW_VulkanWrap
 
 		VkBuffer m_IndexBuffer = VK_NULL_HANDLE;
 		VkDeviceMemory m_IndexBufferMemory = VK_NULL_HANDLE;
+
+		VkDescriptorSet m_DescriptorSet;
 	};
 
 	class GLTFModel : public Model

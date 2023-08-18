@@ -21,7 +21,7 @@ using UINT64 = uint64_t;
 {\
 	if (!(res))\
 	{\
-		Log::Error(std::format("Assertion Failed:{}", __VA_ARGS__));\
+		Log::Error("Assertion Failed:{}", __VA_ARGS__);\
 		__debugbreak();\
 	}\
 }
@@ -30,7 +30,7 @@ using UINT64 = uint64_t;
 {\
 	if (res != VK_SUCCESS)\
 	{\
-		Log::Error(std::format("Vulkan Assertion Failed:{}", __VA_ARGS__));\
+		Log::Error("Vulkan Assertion Failed:{}, res = {}", __VA_ARGS__, res);\
 		__debugbreak();\
 	}\
 }

@@ -15,19 +15,6 @@
 #include "glm/gtc/matrix_transform.hpp"
 #include "glm/gtc/type_ptr.hpp"
 
-#define TINYGLTF_IMPLEMENTATION
-#define STB_IMAGE_IMPLEMENTATION
-#define STB_IMAGE_WRITE_IMPLEMENTATION
-// #define TINYGLTF_NOEXCEPTION // optional. disable exception handling.
-
-#include "tiny_gltf.h"
-
-#define TINYOBJLOADER_IMPLEMENTATION
-#include <tiny_obj_loader.h>
-
-#include "ktx.h"
-#include "ktxvulkan.h"
-
 #include "json.hpp"
 
 #define INSTANCE_NUM 9
@@ -104,23 +91,22 @@ void VulkanRenderer::Init()
 
 	CreateCommonDescriptorSetLayout();
 	CreateCommonDescriptorPool();
-	CreateCommonDescriptorSets();
 
 	CreateCommonGraphicPipelineLayout();
 	CreateCommonGraphicPipeline();
 
-	m_testObjModel = DZW_VulkanWrap::ModelFactor::CreateModel(this, "./Assert/Model/spot_control_mesh.obj");
+	//m_testObjModel = DZW_VulkanWrap::ModelFactor::CreateModel(this, "./Assert/Model/spot_control_mesh.obj");
 
-	////glTF Model
-	//CreateGLTFShader();
+	//glTF Model
+	CreateGLTFShader();
 
-	//CreateGLTFDescriptorSetLayout();
-	//CreateGLTFDescriptorPool();
+	CreateGLTFDescriptorSetLayout();
+	CreateGLTFDescriptorPool();
 
-	//CreateGLTFGraphicPipelineLayout();
-	//CreateGLTFGraphicPipeline();
+	CreateGLTFGraphicPipelineLayout();
+	CreateGLTFGraphicPipeline();
 
-	//m_testGLTFModel = DZW_VulkanWrap::ModelFactor::CreateModel(this, "./Assert/Model/FlightHelmet/glTF/FlightHelmet.gltf");
+	m_testGLTFModel = DZW_VulkanWrap::ModelFactor::CreateModel(this, "./Assert/Model/FlightHelmet/glTF/FlightHelmet.gltf");
 	
 	//LoadPlanetInfo();
 
@@ -134,9 +120,9 @@ void VulkanRenderer::Init()
 	//CreateGraphicPipelineLayout();
 	//CreateGraphicPipeline();
 
-	////Skybox
-	//LoadTexture("./Assert/Texture/Skybox/milkyway_cubemap.ktx", m_SkyboxTexture);
-	//LoadModel("./Assert/Model/Skybox/cube.gltf", m_SkyboxModel);
+	//Skybox
+	//m_SkyboxModel = DZW_VulkanWrap::ModelFactor::CreateModel(this, "./Assert/Model/Skybox/cube.gltf");
+	//m_SkyboxTexture = DZW_VulkanWrap::TextureFactor::CreateTexture(this, "./Assert/Texture/Skybox/milkyway_cubemap.ktx");
 	//CreateSkyboxShader();
 	//CreateSkyboxUniformBuffers();
 	//CreateSkyboxDescriptorSetLayout();
@@ -222,8 +208,7 @@ void VulkanRenderer::Clean()
 {
 	g_UI.Clean();
 
-	m_testObjModel.reset();
-	////Skybox
+	//Skybox
 	//FreeTexture(m_SkyboxTexture);
 
 	//vkDestroyDescriptorPool(m_LogicalDevice, m_SkyboxDescriptorPool, nullptr);
@@ -333,6 +318,23 @@ void VulkanRenderer::Clean()
 	vkDestroyPipeline(m_LogicalDevice, m_CommonGraphicPipeline, nullptr);
 	vkDestroyPipelineLayout(m_LogicalDevice, m_CommonGraphicPipelineLayout, nullptr);
 	vkDestroyPipelineCache(m_LogicalDevice, m_CommonGraphicPipelineCache, nullptr);
+
+	//m_testObjModel.reset();
+
+	//----------------------------------------------------------------------------
+
+	for (const auto& shaderModule : m_mapGLTFShaderModule)
+	{
+		vkDestroyShaderModule(m_LogicalDevice, shaderModule.second, nullptr);
+	}
+
+	vkDestroyDescriptorPool(m_LogicalDevice, m_GLTFDescriptorPool, nullptr);
+	vkDestroyDescriptorSetLayout(m_LogicalDevice, m_GLTFDescriptorSetLayout, nullptr);
+
+	vkDestroyPipeline(m_LogicalDevice, m_GLTFGraphicPipeline, nullptr);
+	vkDestroyPipelineLayout(m_LogicalDevice, m_GLTFGraphicPipelineLayout, nullptr);
+
+	m_testGLTFModel.reset();
 
 	//----------------------------------------------------------------------------
 	//_aligned_free(m_DynamicUboData.model);
@@ -1484,85 +1486,6 @@ void VulkanRenderer::ChangeImageLayout(VkImage image, VkFormat format, UINT uiMi
 	EndSingleTimeCommand(singleTimeCommandBuffer);
 }
 
-void VulkanRenderer::TransferImageDataByStageBuffer(const void* pData, VkDeviceSize imageSize, VkImage& image, UINT uiWidth, UINT uiHeight, DZW_VulkanWrap::Texture& texture, ktxTexture* pKtxTexture)
-{
-	if (texture.IsKtxTexture())
-	{
-		ASSERT(pKtxTexture);
-	}
-	else
-	{
-		ASSERT(texture.m_uiFaceNum == 1 && texture.m_uiLayerNum == 1 && texture.m_uiMipLevelNum == 1);
-	}
-
-	VkBuffer stagingBuffer;
-	VkDeviceMemory stagingBufferMemory;
-
-	CreateBufferAndBindMemory(imageSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-		VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-		stagingBuffer, stagingBufferMemory);
-
-	void* imageData;
-	vkMapMemory(m_LogicalDevice, stagingBufferMemory, 0, imageSize, 0, (void**)&imageData);
-	memcpy(imageData, pData, static_cast<size_t>(imageSize));
-	vkUnmapMemory(m_LogicalDevice, stagingBufferMemory);
-
-	VkCommandBuffer singleTimeCommandBuffer = BeginSingleTimeCommand();
-
-	if (texture.IsKtxTexture())
-	{
-		std::vector<VkBufferImageCopy> vecBufferCopyRegions;
-		for (UINT face = 0; face < texture.m_uiFaceNum; ++face)
-		{
-			for (UINT layer = 0; layer < texture.m_uiLayerNum; ++layer)
-			{
-				for (UINT mipLevel = 0; mipLevel < texture.m_uiMipLevelNum; ++mipLevel)
-				{
-					size_t offset;
-					KTX_error_code ret = ktxTexture_GetImageOffset(pKtxTexture, mipLevel, layer, face, &offset);
-					ASSERT(ret == KTX_SUCCESS);
-					VkBufferImageCopy bufferCopyRegion = {};
-					bufferCopyRegion.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-					bufferCopyRegion.imageSubresource.mipLevel = mipLevel;
-					bufferCopyRegion.imageSubresource.baseArrayLayer = (texture.m_uiFaceNum > 1) ? (face + layer * 6) : (layer);
-					bufferCopyRegion.imageSubresource.layerCount = 1;
-					bufferCopyRegion.imageExtent.width = uiWidth >> mipLevel;
-					bufferCopyRegion.imageExtent.height = uiHeight >> mipLevel;
-					bufferCopyRegion.imageExtent.depth = 1;
-					bufferCopyRegion.bufferOffset = offset;
-					vecBufferCopyRegions.push_back(bufferCopyRegion);
-				}
-			}
-		}
-
-		vkCmdCopyBufferToImage(singleTimeCommandBuffer, stagingBuffer, image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-			static_cast<UINT>(vecBufferCopyRegions.size()), vecBufferCopyRegions.data());
-	}
-	else
-	{
-		VkBufferImageCopy region{};
-		//指定要复制的数据在buffer中的偏移量
-		region.bufferOffset = 0;
-		//指定数据在memory中的存放方式，用于对齐
-		//若都为0，则数据在memory中会紧凑存放
-		region.bufferRowLength = 0;
-		region.bufferImageHeight = 0;
-		//指定数据被复制到image的哪一部分
-		region.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-		region.imageSubresource.mipLevel = 0;
-		region.imageSubresource.baseArrayLayer = 0;
-		region.imageSubresource.layerCount = 1;
-		region.imageOffset = { 0, 0, 0 };
-		region.imageExtent = { uiWidth, uiHeight, 1 };
-		vkCmdCopyBufferToImage(singleTimeCommandBuffer, stagingBuffer, image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region);
-	}
-
-	EndSingleTimeCommand(singleTimeCommandBuffer);
-
-	vkDestroyBuffer(m_LogicalDevice, stagingBuffer, nullptr);
-	vkFreeMemory(m_LogicalDevice, stagingBufferMemory, nullptr);
-}
-
 void VulkanRenderer::TransferImageDataByStageBuffer(const void* pData, VkDeviceSize imageSize, VkImage& image, UINT uiWidth, UINT uiHeight)
 {
 	VkBuffer stagingBuffer;
@@ -1782,8 +1705,8 @@ void VulkanRenderer::CreateDescriptorSets()
 		//sampler
 		VkDescriptorImageInfo imageInfo{};
 		imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-		imageInfo.imageView = m_Texture.m_ImageView;
-		imageInfo.sampler = m_Texture.m_Sampler;
+		//imageInfo.imageView = m_Texture.m_ImageView;
+		//imageInfo.sampler = m_Texture.m_Sampler;
 
 		VkWriteDescriptorSet samplerWrite{};
 		samplerWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
@@ -1949,7 +1872,7 @@ void VulkanRenderer::CreateGraphicPipeline()
 	//-----------------------Multisample State--------------------------//
 	VkPipelineMultisampleStateCreateInfo multisamplingStateCreateInfo{};
 	multisamplingStateCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
-	multisamplingStateCreateInfo.sampleShadingEnable = (VkBool32)(m_Texture.m_uiMipLevelNum > 1);
+	//multisamplingStateCreateInfo.sampleShadingEnable = (VkBool32)(m_Texture.m_uiMipLevelNum > 1);
 	multisamplingStateCreateInfo.minSampleShading = 0.8f;
 	multisamplingStateCreateInfo.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
 	multisamplingStateCreateInfo.minSampleShading = 1.f;
@@ -3033,8 +2956,8 @@ void VulkanRenderer::CreateSkyboxDescriptorSets()
 		//cubemap sampler
 		VkDescriptorImageInfo imageInfo{};
 		imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-		imageInfo.imageView = m_SkyboxTexture.m_ImageView;
-		imageInfo.sampler = m_SkyboxTexture.m_Sampler;
+		imageInfo.imageView = m_SkyboxTexture->m_ImageView;
+		imageInfo.sampler = m_SkyboxTexture->m_Sampler;
 
 		VkWriteDescriptorSet cubemapSamplerWrite{};
 		cubemapSamplerWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
@@ -3257,7 +3180,7 @@ void VulkanRenderer::RecordCommandBuffer(VkCommandBuffer& commandBuffer, UINT ui
 	//	vkCmdDrawIndexed(commandBuffer, static_cast<UINT>(m_Model.m_vecIndices.size()), 1, 0, 0, 0);
 	//}
 
-	m_testObjModel->Draw(commandBuffer, m_CommonGraphicPipeline, m_CommonGraphicPipelineLayout, m_vecCommonDescriptorSets[uiIdx]);
+	//m_testObjModel->Draw(commandBuffer, m_CommonGraphicPipeline, m_CommonGraphicPipelineLayout, m_vecCommonDescriptorSets[uiIdx]);
 
 	//m_testGLTFModel->Draw(commandBuffer, m_GLTFGraphicPipeline, m_GLTFGraphicPipelineLayout, m_vecCommonDescriptorSets[uiIdx]);
 
@@ -3479,167 +3402,6 @@ void VulkanRenderer::WindowResize()
 		m_vecCommandBuffers.data());
 	
 	CreateCommandBuffers();
-}
-
-void VulkanRenderer::LoadTexture(const std::filesystem::path& filepath, DZW_VulkanWrap::Texture& texture)
-{
-	texture.m_Filepath = filepath;
-
-	if (texture.IsKtxTexture())
-	{
-		ktxResult result;
-		ktxTexture* ktxTexture;
-		result = ktxTexture_CreateFromNamedFile(texture.m_Filepath.string().c_str(), KTX_TEXTURE_CREATE_LOAD_IMAGE_DATA_BIT, &ktxTexture);
-		ASSERT(result == KTX_SUCCESS, std::format("KTX load image {} failed", texture.m_Filepath.string()));
-
-		ASSERT(ktxTexture->glFormat == GL_RGBA);
-		ASSERT(ktxTexture->numDimensions == 2);
-
-		ktx_uint8_t* ktxTextureData = ktxTexture_GetData(ktxTexture);
-		texture.m_Size = ktxTexture_GetSize(ktxTexture);
-
-		texture.m_uiWidth = ktxTexture->baseWidth;
-		texture.m_uiHeight = ktxTexture->baseHeight;
-		texture.m_uiMipLevelNum = ktxTexture->numLevels;
-		texture.m_uiLayerNum = ktxTexture->numLayers;
-		texture.m_uiFaceNum = ktxTexture->numFaces;
-
-		if (texture.IsTextureArray())
-		{
-			auto& physicalDeviceInfo = m_mapPhysicalDeviceInfo.at(m_PhysicalDevice);
-			UINT uiMaxLayerNum = physicalDeviceInfo.properties.limits.maxImageArrayLayers;
-			ASSERT(texture.m_uiLayerNum <= uiMaxLayerNum, std::format("TextureArray {} layout count {} exceed max limit {}", texture.m_Filepath.string(), texture.m_uiLayerNum, uiMaxLayerNum));
-		}
-
-		CreateImageAndBindMemory(texture.m_uiWidth, texture.m_uiHeight, texture.m_uiMipLevelNum, texture.m_uiLayerNum, texture.m_uiFaceNum,
-			VK_SAMPLE_COUNT_1_BIT,
-			VK_FORMAT_R8G8B8A8_SRGB,
-			VK_IMAGE_TILING_OPTIMAL,
-			VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
-			VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
-			texture.m_Image, texture.m_Memory);
-
-		//copy之前，将layout从初始的undefined转为transfer dst
-		ChangeImageLayout(texture.m_Image,
-			VK_FORMAT_R8G8B8A8_SRGB,				//image format
-			texture.m_uiMipLevelNum,				//mipmap levels
-			texture.m_uiLayerNum,					//layers
-			texture.m_uiFaceNum,					//faces
-			VK_IMAGE_LAYOUT_UNDEFINED,				//src layout
-			VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);	//dst layout
-
-		TransferImageDataByStageBuffer(ktxTextureData, texture.m_Size, texture.m_Image, texture.m_uiWidth, texture.m_uiHeight, texture, ktxTexture);
-
-		ktxTexture_Destroy(ktxTexture);
-	}
-	else
-	{
-		//stb库是一个轻量级的图像处理库，无法直接读取图片的mipmap层级
-		int nTexWidth = 0;
-		int nTexHeight = 0;
-		int nTexChannel = 0;
-		stbi_uc* pixels = stbi_load(texture.m_Filepath.string().c_str(), &nTexWidth, &nTexHeight, &nTexChannel, STBI_rgb_alpha);
-		ASSERT(pixels, std::format("STB load image {} failed", texture.m_Filepath.string()));
-
-		ASSERT(nTexChannel == 4);
-
-		texture.m_uiWidth = static_cast<UINT>(nTexWidth);
-		texture.m_uiHeight = static_cast<UINT>(nTexHeight);
-		texture.m_uiMipLevelNum = 1;
-		texture.m_uiLayerNum = 1;
-		texture.m_uiFaceNum = 1;
-
-		texture.m_Size = texture.m_uiWidth * texture.m_uiHeight * static_cast<UINT>(nTexChannel);
-
-		CreateImageAndBindMemory(texture.m_uiWidth, texture.m_uiHeight, 
-			texture.m_uiMipLevelNum, texture.m_uiLayerNum, texture.m_uiFaceNum, 
-			VK_SAMPLE_COUNT_1_BIT,
-			VK_FORMAT_R8G8B8A8_SRGB,
-			VK_IMAGE_TILING_OPTIMAL,
-			VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
-			VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
-			texture.m_Image, texture.m_Memory);
-
-		//copy之前，将layout从初始的undefined转为transfer dst
-		ChangeImageLayout(texture.m_Image,
-			VK_FORMAT_R8G8B8A8_SRGB,				//image format
-			texture.m_uiMipLevelNum,				//mipmap levels
-			texture.m_uiLayerNum,					//layers
-			texture.m_uiFaceNum,					//faces
-			VK_IMAGE_LAYOUT_UNDEFINED,				//src layout
-			VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);	//dst layout
-
-		TransferImageDataByStageBuffer(pixels, texture.m_Size, texture.m_Image, texture.m_uiWidth, texture.m_uiHeight, texture, nullptr);
-
-		stbi_image_free(pixels);
-
-	}
-
-	//transfer之后，将layout从transfer dst转为shader readonly
-	//如果使用mipmap，之后在generateMipmaps中将layout转为shader readonly
-
-	ChangeImageLayout(texture.m_Image,
-		VK_FORMAT_R8G8B8A8_SRGB,
-		texture.m_uiMipLevelNum,
-		texture.m_uiLayerNum,
-		texture.m_uiFaceNum,
-		VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-		VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
-
-	texture.m_ImageView = CreateImageView(texture.m_Image, 
-		VK_FORMAT_R8G8B8A8_SRGB,	//格式为sRGB
-		VK_IMAGE_ASPECT_COLOR_BIT,	//aspectFlags为COLOR_BIT
-		texture.m_uiMipLevelNum,
-		texture.m_uiLayerNum,
-		texture.m_uiFaceNum
-	);
-
-	VkSamplerCreateInfo createInfo{};
-	createInfo.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
-	//设置过采样与欠采样时的采样方法，可以是nearest，linear，cubic等
-	createInfo.magFilter = VK_FILTER_LINEAR;
-	createInfo.minFilter = VK_FILTER_LINEAR;
-
-	//设置纹理采样超出边界时的寻址模式，可以是repeat，mirror，clamp to edge，clamp to border等
-	createInfo.addressModeU = VK_SAMPLER_ADDRESS_MODE_REPEAT;
-	createInfo.addressModeV = VK_SAMPLER_ADDRESS_MODE_REPEAT;
-	createInfo.addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT;
-
-	//设置是否开启各向异性过滤，你的硬件不一定支持Anisotropy，需要确认硬件支持该preperty
-	createInfo.anisotropyEnable = VK_FALSE;
-	if (createInfo.anisotropyEnable == VK_TRUE)
-	{
-		auto& physicalDeviceProperties = m_mapPhysicalDeviceInfo.at(m_PhysicalDevice).properties;
-		createInfo.maxAnisotropy = physicalDeviceProperties.limits.maxSamplerAnisotropy;
-	}
-
-	//设置寻址模式为clamp to border时的填充颜色
-	createInfo.borderColor = VK_BORDER_COLOR_INT_OPAQUE_BLACK;
-
-	//如果为true，则坐标为[0, texWidth), [0, texHeight)
-	//如果为false，则坐标为传统的[0, 1), [0, 1)
-	createInfo.unnormalizedCoordinates = VK_FALSE;
-
-	//设置是否开启比较与对比较结果的操作，通常用于百分比邻近滤波（Shadow Map PCS）
-	createInfo.compareEnable = VK_FALSE;
-	createInfo.compareOp = VK_COMPARE_OP_ALWAYS;
-
-	//设置mipmap相关参数
-	createInfo.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
-	createInfo.mipLodBias = 0.f;
-	createInfo.minLod = 0.f;
-	createInfo.maxLod = static_cast<float>(texture.m_uiMipLevelNum);
-
-	VULKAN_ASSERT(vkCreateSampler(m_LogicalDevice, &createInfo, nullptr, &texture.m_Sampler), "Create texture sampler failed");
-}
-
-void VulkanRenderer::FreeTexture(DZW_VulkanWrap::Texture& texture)
-{
-	vkDestroySampler(m_LogicalDevice, texture.m_Sampler, nullptr);
-
-	vkDestroyImageView(m_LogicalDevice, texture.m_ImageView, nullptr);
-	vkDestroyImage(m_LogicalDevice, texture.m_Image, nullptr);
-	vkFreeMemory(m_LogicalDevice, texture.m_Memory, nullptr);
 }
 
 void VulkanRenderer::LoadPlanetInfo()
@@ -4583,44 +4345,6 @@ void VulkanRenderer::CreateCommonDescriptorPool()
 	VULKAN_ASSERT(vkCreateDescriptorPool(m_LogicalDevice, &poolCreateInfo, nullptr, &m_CommonDescriptorPool), "Create common descriptor pool failed");
 }
 
-void VulkanRenderer::CreateCommonDescriptorSets()
-{
-	VkDescriptorSetAllocateInfo allocInfo{};
-	allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
-	allocInfo.descriptorSetCount = static_cast<UINT>(m_vecSwapChainImages.size());
-	allocInfo.descriptorPool = m_CommonDescriptorPool;
-
-	std::vector<VkDescriptorSetLayout> vecDupDescriptorSetLayout(m_vecSwapChainImages.size(), m_CommonDescriptorSetLayout);
-	allocInfo.pSetLayouts = vecDupDescriptorSetLayout.data();
-
-	m_vecCommonDescriptorSets.resize(m_vecSwapChainImages.size());
-	VULKAN_ASSERT(vkAllocateDescriptorSets(m_LogicalDevice, &allocInfo, m_vecCommonDescriptorSets.data()), "Allocate common desctiprot sets failed");
-
-	for (size_t i = 0; i < m_vecSwapChainImages.size(); ++i)
-	{
-		//ubo
-		VkDescriptorBufferInfo descriptorBufferInfo{};
-		descriptorBufferInfo.buffer = m_vecCommonMVPUniformBuffers[i];
-		descriptorBufferInfo.offset = 0;
-		descriptorBufferInfo.range = sizeof(CommonMVPUniformBufferObject);
-
-		VkWriteDescriptorSet uboWrite{};
-		uboWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-		uboWrite.dstSet = m_vecCommonDescriptorSets[i];
-		uboWrite.dstBinding = 0;
-		uboWrite.dstArrayElement = 0;
-		uboWrite.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-		uboWrite.descriptorCount = 1;
-		uboWrite.pBufferInfo = &descriptorBufferInfo;
-
-		std::vector<VkWriteDescriptorSet> vecDescriptorWrite = {
-			uboWrite,
-		};
-
-		vkUpdateDescriptorSets(m_LogicalDevice, static_cast<UINT>(vecDescriptorWrite.size()), vecDescriptorWrite.data(), 0, nullptr);
-	}
-}
-
 void VulkanRenderer::CreateCommonGraphicPipelineLayout()
 {
 	VkPipelineLayoutCreateInfo pipelineLayoutCreateInfo{};
@@ -4849,17 +4573,17 @@ void VulkanRenderer::CreateGLTFDescriptorPool()
 	//baseColor sampler
 	VkDescriptorPoolSize baseColorSamplerPoolSize{};
 	baseColorSamplerPoolSize.type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-	baseColorSamplerPoolSize.descriptorCount = static_cast<UINT>(m_vecSwapChainImages.size());
+	baseColorSamplerPoolSize.descriptorCount = static_cast<UINT>(m_vecSwapChainImages.size()) * 10;
 
 	//normal sampler
 	VkDescriptorPoolSize normalSamplerPoolSize{};
 	normalSamplerPoolSize.type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-	normalSamplerPoolSize.descriptorCount = static_cast<UINT>(m_vecSwapChainImages.size());
+	normalSamplerPoolSize.descriptorCount = static_cast<UINT>(m_vecSwapChainImages.size()) * 10;
 
 	//occlusion+metallic+roughness sampler
 	VkDescriptorPoolSize omrSamplerPoolSize{};
 	omrSamplerPoolSize.type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-	omrSamplerPoolSize.descriptorCount = static_cast<UINT>(m_vecSwapChainImages.size());
+	omrSamplerPoolSize.descriptorCount = static_cast<UINT>(m_vecSwapChainImages.size()) * 10;
 
 	std::vector<VkDescriptorPoolSize> vecPoolSize = {
 		baseColorSamplerPoolSize,
