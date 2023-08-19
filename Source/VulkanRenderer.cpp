@@ -2967,216 +2967,224 @@ void VulkanRenderer::RecordCommandBuffer(VkCommandBuffer& commandBuffer, UINT ui
 	VULKAN_ASSERT(vkBeginCommandBuffer(commandBuffer, &commandBufferBeginInfo), "Begin command buffer failed");
 
 	//First renderpass
-	VkRenderPassBeginInfo shadowMapRenderPassBeginInfo{};
-	shadowMapRenderPassBeginInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
-	shadowMapRenderPassBeginInfo.renderPass = m_ShadowMapRenderPass;
-	shadowMapRenderPassBeginInfo.framebuffer = m_ShadowMapFrameBuffer;
-	shadowMapRenderPassBeginInfo.renderArea.offset = { 0, 0 };
-	shadowMapRenderPassBeginInfo.renderArea.extent = m_SwapChainExtent2D;
-	std::array<VkClearValue, 2> aryClearColor;
-	aryClearColor[0].color = { 0.f, 0.f, 0.f, 1.f };
-	aryClearColor[1].depthStencil = { 1.f, 0 };
-	shadowMapRenderPassBeginInfo.clearValueCount = static_cast<UINT>(aryClearColor.size());
-	shadowMapRenderPassBeginInfo.pClearValues = aryClearColor.data();
-	vkCmdBeginRenderPass(commandBuffer, &shadowMapRenderPassBeginInfo, VK_SUBPASS_CONTENTS_INLINE);
+	{
+		VkRenderPassBeginInfo shadowMapRenderPassBeginInfo{};
+		shadowMapRenderPassBeginInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
+		shadowMapRenderPassBeginInfo.renderPass = m_ShadowMapRenderPass;
+		shadowMapRenderPassBeginInfo.framebuffer = m_ShadowMapFrameBuffer;
+		shadowMapRenderPassBeginInfo.renderArea.offset = { 0, 0 };
+		shadowMapRenderPassBeginInfo.renderArea.extent = m_SwapChainExtent2D;
+		std::array<VkClearValue, 2> shadowMapAryClearColor;
+		shadowMapAryClearColor[0].color = { 1.f, 1.f, 1.f, 1.f };
+		shadowMapAryClearColor[1].depthStencil = { 1.f, 0 };
+		shadowMapRenderPassBeginInfo.clearValueCount = static_cast<UINT>(shadowMapAryClearColor.size());
+		shadowMapRenderPassBeginInfo.pClearValues = shadowMapAryClearColor.data();
+		vkCmdBeginRenderPass(commandBuffer, &shadowMapRenderPassBeginInfo, VK_SUBPASS_CONTENTS_INLINE);
 
-	VkViewport viewport{};
-	viewport.x = 0.f;
-	viewport.y = 0.f;
-	viewport.width = static_cast<float>(m_SwapChainExtent2D.width);
-	viewport.height = static_cast<float>(m_SwapChainExtent2D.height);
-	viewport.minDepth = 0.f;
-	viewport.maxDepth = 1.f;
-	vkCmdSetViewport(commandBuffer, 0, 1, &viewport);
+		VkViewport shadowMapViewport{};
+		shadowMapViewport.x = 0.f;
+		shadowMapViewport.y = 0.f;
+		shadowMapViewport.width = static_cast<float>(m_SwapChainExtent2D.width);
+		shadowMapViewport.height = static_cast<float>(m_SwapChainExtent2D.height);
+		shadowMapViewport.minDepth = 0.f;
+		shadowMapViewport.maxDepth = 1.f;
+		vkCmdSetViewport(commandBuffer, 0, 1, &shadowMapViewport);
 
-	VkRect2D scissor{};
-	scissor.offset = { 0, 0 };
-	scissor.extent = m_SwapChainExtent2D;
-	vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
+		VkRect2D shadowMapScissor{};
+		shadowMapScissor.offset = { 0, 0 };
+		shadowMapScissor.extent = m_SwapChainExtent2D;
+		vkCmdSetScissor(commandBuffer, 0, 1, &shadowMapScissor);
 
-	//vkCmdSetDepthBias(commandBuffer, depthBiasConstant, 0.0f, depthBiasSlope);
+		//vkCmdSetDepthBias(commandBuffer, depthBiasConstant, 0.0f, depthBiasSlope);
 
-	vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m_ShadowMapPipeline);
-	vkCmdBindDescriptorSets(commandBuffer, 
-		VK_PIPELINE_BIND_POINT_GRAPHICS, 
-		m_ShadowMapPipelineLayout, 
-		0, 1,
-		&m_ShadowMapDescriptorSet, 
-		0, nullptr);
+		vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m_ShadowMapPipeline);
+		vkCmdBindDescriptorSets(commandBuffer,
+			VK_PIPELINE_BIND_POINT_GRAPHICS,
+			m_ShadowMapPipelineLayout,
+			0, 1,
+			&m_ShadowMapDescriptorSet,
+			0, nullptr);
 
-	vkCmdEndRenderPass(commandBuffer);
+		m_testObjModel->Draw(commandBuffer, m_ShadowMapPipeline, m_ShadowMapPipelineLayout, &m_ShadowMapDescriptorSet);
 
-	VkRenderPassBeginInfo renderPassBeginInfo{};
-	renderPassBeginInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
-	renderPassBeginInfo.renderPass = m_RenderPass;
-	renderPassBeginInfo.framebuffer = m_vecSwapChainFrameBuffers[uiIdx];
-	renderPassBeginInfo.renderArea.offset = { 0, 0 };
-	renderPassBeginInfo.renderArea.extent = m_SwapChainExtent2D;
-	std::array<VkClearValue, 2> aryClearColor;
-	aryClearColor[0].color = { 0.f, 0.f, 0.f, 1.f };
-	aryClearColor[1].depthStencil = { 1.f, 0 };
-	renderPassBeginInfo.clearValueCount = static_cast<UINT>(aryClearColor.size());
-	renderPassBeginInfo.pClearValues = aryClearColor.data();
-
-	vkCmdBeginRenderPass(commandBuffer, &renderPassBeginInfo, VK_SUBPASS_CONTENTS_INLINE);
-
-	//vkCmdSetViewport，vkCmdSetScissor类似函数应用于commandBuffer后续所有的绘制命令
-	//应该在最开始绑定渲染管线之前设置
-	VkViewport viewport{};
-	viewport.x = 0.f;
-	viewport.y = 0.f;
-	viewport.width = static_cast<float>(m_SwapChainExtent2D.width);
-	viewport.height = static_cast<float>(m_SwapChainExtent2D.height);
-	viewport.minDepth = 0.f;
-	viewport.maxDepth = 1.f;
-	vkCmdSetViewport(commandBuffer, 0, 1, &viewport);
-
-	VkRect2D scissor{};
-	scissor.offset = { 0, 0 };
-	scissor.extent = m_SwapChainExtent2D;
-	vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
+		vkCmdEndRenderPass(commandBuffer);
+	}
 	
-	if (m_bEnableSkybox)
+	//Second RenderPass
 	{
-		vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m_SkyboxGraphicPipeline);
-		VkBuffer skyboxVertexBuffers[] = {
-			m_SkyboxModel->m_VertexBuffer,
-		};
-		VkDeviceSize skyboxOffsets[]{ 0 };
-		vkCmdBindVertexBuffers(commandBuffer, 0, 1, skyboxVertexBuffers, skyboxOffsets);
-		vkCmdBindIndexBuffer(commandBuffer, m_SkyboxModel->m_IndexBuffer, 0, VK_INDEX_TYPE_UINT32);
-		vkCmdBindDescriptorSets(commandBuffer,
-			VK_PIPELINE_BIND_POINT_GRAPHICS,
-			m_SkyboxGraphicPipelineLayout,
-			0, 1,
-			&m_vecSkyboxDescriptorSets[uiIdx],
-			0, NULL);
+		VkRenderPassBeginInfo renderPassBeginInfo{};
+		renderPassBeginInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
+		renderPassBeginInfo.renderPass = m_RenderPass;
+		renderPassBeginInfo.framebuffer = m_vecSwapChainFrameBuffers[uiIdx];
+		renderPassBeginInfo.renderArea.offset = { 0, 0 };
+		renderPassBeginInfo.renderArea.extent = m_SwapChainExtent2D;
+		std::array<VkClearValue, 2> aryClearColor;
+		aryClearColor[0].color = { 0.f, 0.f, 0.f, 1.f };
+		aryClearColor[1].depthStencil = { 1.f, 0 };
+		renderPassBeginInfo.clearValueCount = static_cast<UINT>(aryClearColor.size());
+		renderPassBeginInfo.pClearValues = aryClearColor.data();
 
-		vkCmdDrawIndexed(commandBuffer, static_cast<UINT>(m_SkyboxModel->m_vecIndices.size()), 1, 0, 0, 0);
-	}
+		vkCmdBeginRenderPass(commandBuffer, &renderPassBeginInfo, VK_SUBPASS_CONTENTS_INLINE);
 
-	if (m_bEnableMeshGrid)
-	{
-		if (m_fLastMeshGridSplit != m_fMeshGridSplit)
+		//vkCmdSetViewport，vkCmdSetScissor类似函数应用于commandBuffer后续所有的绘制命令
+		//应该在最开始绑定渲染管线之前设置
+		VkViewport viewport{};
+		viewport.x = 0.f;
+		viewport.y = 0.f;
+		viewport.width = static_cast<float>(m_SwapChainExtent2D.width);
+		viewport.height = static_cast<float>(m_SwapChainExtent2D.height);
+		viewport.minDepth = 0.f;
+		viewport.maxDepth = 1.f;
+		vkCmdSetViewport(commandBuffer, 0, 1, &viewport);
+
+		VkRect2D scissor{};
+		scissor.offset = { 0, 0 };
+		scissor.extent = m_SwapChainExtent2D;
+		vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
+
+		if (m_bEnableSkybox)
 		{
-			RecreateMeshGridVertexBuffer();
-			RecreateMeshGridIndexBuffer();
-			m_fLastMeshGridSplit = m_fMeshGridSplit;
+			vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m_SkyboxGraphicPipeline);
+			VkBuffer skyboxVertexBuffers[] = {
+				m_SkyboxModel->m_VertexBuffer,
+			};
+			VkDeviceSize skyboxOffsets[]{ 0 };
+			vkCmdBindVertexBuffers(commandBuffer, 0, 1, skyboxVertexBuffers, skyboxOffsets);
+			vkCmdBindIndexBuffer(commandBuffer, m_SkyboxModel->m_IndexBuffer, 0, VK_INDEX_TYPE_UINT32);
+			vkCmdBindDescriptorSets(commandBuffer,
+				VK_PIPELINE_BIND_POINT_GRAPHICS,
+				m_SkyboxGraphicPipelineLayout,
+				0, 1,
+				&m_vecSkyboxDescriptorSets[uiIdx],
+				0, NULL);
+
+			vkCmdDrawIndexed(commandBuffer, static_cast<UINT>(m_SkyboxModel->m_vecIndices.size()), 1, 0, 0, 0);
 		}
-		if (m_fLastMeshGridSize != m_fMeshGridSize)
+
+		if (m_bEnableMeshGrid)
 		{
-			RecreateMeshGridVertexBuffer();
-			m_fLastMeshGridSize = m_fMeshGridSize;
+			if (m_fLastMeshGridSplit != m_fMeshGridSplit)
+			{
+				RecreateMeshGridVertexBuffer();
+				RecreateMeshGridIndexBuffer();
+				m_fLastMeshGridSplit = m_fMeshGridSplit;
+			}
+			if (m_fLastMeshGridSize != m_fMeshGridSize)
+			{
+				RecreateMeshGridVertexBuffer();
+				m_fLastMeshGridSize = m_fMeshGridSize;
+			}
+			vkCmdSetLineWidth(commandBuffer, m_fMeshGridLineWidth);
+			vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m_MeshGridGraphicPipeline);
+			VkBuffer meshGridVertexBuffers[] = {
+				m_MeshGridVertexBuffer,
+			};
+			VkDeviceSize meshGridOffsets[]{ 0 };
+			vkCmdBindVertexBuffers(commandBuffer, 0, 1, meshGridVertexBuffers, meshGridOffsets);
+			vkCmdBindIndexBuffer(commandBuffer, m_MeshGridIndexBuffer, 0, VK_INDEX_TYPE_UINT32);
+			vkCmdBindDescriptorSets(commandBuffer,
+				VK_PIPELINE_BIND_POINT_GRAPHICS,
+				m_MeshGridGraphicPipelineLayout,
+				0, 1,
+				&m_vecMeshGridDescriptorSets[uiIdx],
+				0, NULL);
+
+			vkCmdDrawIndexed(commandBuffer, static_cast<UINT>(m_vecMeshGridIndices.size()), 1, 0, 0, 0);
+			vkCmdSetLineWidth(commandBuffer, 1.f);
 		}
-		vkCmdSetLineWidth(commandBuffer, m_fMeshGridLineWidth);
-		vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m_MeshGridGraphicPipeline);
-		VkBuffer meshGridVertexBuffers[] = {
-			m_MeshGridVertexBuffer,
-		};
-		VkDeviceSize meshGridOffsets[]{ 0 };
-		vkCmdBindVertexBuffers(commandBuffer, 0, 1, meshGridVertexBuffers, meshGridOffsets);
-		vkCmdBindIndexBuffer(commandBuffer, m_MeshGridIndexBuffer, 0, VK_INDEX_TYPE_UINT32);
-		vkCmdBindDescriptorSets(commandBuffer,
-			VK_PIPELINE_BIND_POINT_GRAPHICS,
-			m_MeshGridGraphicPipelineLayout,
-			0, 1,
-			&m_vecMeshGridDescriptorSets[uiIdx],
-			0, NULL);
 
-		vkCmdDrawIndexed(commandBuffer, static_cast<UINT>(m_vecMeshGridIndices.size()), 1, 0, 0, 0);
-		vkCmdSetLineWidth(commandBuffer, 1.f);
+		if (m_bEnableEllipse)
+		{
+			vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m_EllipseGraphicPipeline);
+			VkBuffer ellipseVertexBuffers[] = {
+				m_EllipseVertexBuffer,
+			};
+			VkDeviceSize ellipseOffsets[]{ 0 };
+			vkCmdBindVertexBuffers(commandBuffer, 0, 1, ellipseVertexBuffers, ellipseOffsets);
+			vkCmdBindIndexBuffer(commandBuffer, m_EllipseIndexBuffer, 0, VK_INDEX_TYPE_UINT32);
+			vkCmdBindDescriptorSets(commandBuffer,
+				VK_PIPELINE_BIND_POINT_GRAPHICS,
+				m_EllipseGraphicPipelineLayout,
+				0, 1,
+				&m_vecEllipseDescriptorSets[uiIdx],
+				0, NULL);
+
+			vkCmdDrawIndexed(commandBuffer, static_cast<UINT>(m_Ellipse.m_vecIndices.size()), 1, 0, 0, 0);
+		}
+
+		//if (m_bEnableBlinnPhong)
+		//{
+		//	vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m_BlinnPhongGraphicPipeline);
+		//	VkBuffer blinnPhongVertexBuffers[] = {
+		//		m_BlinnPhongModel.m_VertexBuffer,
+		//	};
+		//	VkDeviceSize blinnPhongOffsets[]{ 0 };
+		//	vkCmdBindVertexBuffers(commandBuffer, 0, 1, blinnPhongVertexBuffers, blinnPhongOffsets);
+		//	vkCmdBindIndexBuffer(commandBuffer, m_BlinnPhongModel.m_IndexBuffer, 0, VK_INDEX_TYPE_UINT32);
+		//	vkCmdBindDescriptorSets(commandBuffer,
+		//		VK_PIPELINE_BIND_POINT_GRAPHICS,
+		//		m_BlinnPhongGraphicPipelineLayout,
+		//		0, 1,
+		//		&m_vecBlinnPhongDescriptorSets[uiIdx],
+		//		0, NULL);
+
+		//	vkCmdDrawIndexed(commandBuffer, static_cast<UINT>(m_BlinnPhongModel.m_vecIndices.size()), 1, 0, 0, 0);
+		//}
+
+		//if (m_bEnablePBR)
+		//{
+		//	vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m_PBRGraphicPipeline);
+		//	VkBuffer PBRVertexBuffers[] = {
+		//		m_PBRModel.m_VertexBuffer,
+		//	};
+		//	VkDeviceSize PBROffsets[]{ 0 };
+		//	vkCmdBindVertexBuffers(commandBuffer, 0, 1, PBRVertexBuffers, PBROffsets);
+		//	vkCmdBindIndexBuffer(commandBuffer, m_PBRModel.m_IndexBuffer, 0, VK_INDEX_TYPE_UINT32);
+		//	vkCmdBindDescriptorSets(commandBuffer,
+		//		VK_PIPELINE_BIND_POINT_GRAPHICS,
+		//		m_PBRGraphicPipelineLayout,
+		//		0, 1,
+		//		&m_vecPBRDescriptorSets[uiIdx],
+		//		0, NULL);
+
+		//	vkCmdDrawIndexed(commandBuffer, static_cast<UINT>(m_PBRModel.m_vecIndices.size()), 1, 0, 0, 0);
+		//}
+
+		//vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m_GraphicPipeline);
+		//VkBuffer vertexBuffers[] = {
+		//	m_Model.m_VertexBuffer,
+		//};
+		//VkDeviceSize offsets[]{ 0 };
+		//vkCmdBindVertexBuffers(commandBuffer, 0, 1, vertexBuffers, offsets);
+
+		//vkCmdBindIndexBuffer(commandBuffer, m_Model.m_IndexBuffer, 0, VK_INDEX_TYPE_UINT32);
+
+		//for (UINT i = 0; i < INSTANCE_NUM; ++i)
+		//{
+		//	UINT uiDynamicOffset = i * static_cast<UINT>(m_DynamicAlignment);
+
+		//	vkCmdBindDescriptorSets(commandBuffer,
+		//		VK_PIPELINE_BIND_POINT_GRAPHICS, //descriptorSet并非Pipeline独有，因此需要指定是用于Graphic Pipeline还是Compute Pipeline
+		//		m_GraphicPipelineLayout, //PipelineLayout中指定了descriptorSetLayout
+		//		0,	//descriptorSet数组中第一个元素的下标 
+		//		1,	//descriptorSet数组中元素的个数
+		//		&m_vecDescriptorSets[uiIdx],
+		//		1, //启用动态Uniform偏移
+		//		&uiDynamicOffset	//指定动态Uniform的偏移
+		//	);
+
+		//	vkCmdDrawIndexed(commandBuffer, static_cast<UINT>(m_Model.m_vecIndices.size()), 1, 0, 0, 0);
+		//}
+
+		m_testObjModel->Draw(commandBuffer, m_CommonGraphicPipeline, m_CommonGraphicPipelineLayout);
+
+		//m_testGLTFModel->Draw(commandBuffer, m_GLTFGraphicPipeline, m_GLTFGraphicPipelineLayout);
+
+		g_UI.Render(uiIdx);
+
+		vkCmdEndRenderPass(commandBuffer);
 	}
-
-	if (m_bEnableEllipse)
-	{
-		vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m_EllipseGraphicPipeline);
-		VkBuffer ellipseVertexBuffers[] = {
-			m_EllipseVertexBuffer,
-		};
-		VkDeviceSize ellipseOffsets[]{ 0 };
-		vkCmdBindVertexBuffers(commandBuffer, 0, 1, ellipseVertexBuffers, ellipseOffsets);
-		vkCmdBindIndexBuffer(commandBuffer, m_EllipseIndexBuffer, 0, VK_INDEX_TYPE_UINT32);
-		vkCmdBindDescriptorSets(commandBuffer,
-			VK_PIPELINE_BIND_POINT_GRAPHICS,
-			m_EllipseGraphicPipelineLayout,
-			0, 1,
-			&m_vecEllipseDescriptorSets[uiIdx],
-			0, NULL);
-
-		vkCmdDrawIndexed(commandBuffer, static_cast<UINT>(m_Ellipse.m_vecIndices.size()), 1, 0, 0, 0);
-	}
-
-	//if (m_bEnableBlinnPhong)
-	//{
-	//	vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m_BlinnPhongGraphicPipeline);
-	//	VkBuffer blinnPhongVertexBuffers[] = {
-	//		m_BlinnPhongModel.m_VertexBuffer,
-	//	};
-	//	VkDeviceSize blinnPhongOffsets[]{ 0 };
-	//	vkCmdBindVertexBuffers(commandBuffer, 0, 1, blinnPhongVertexBuffers, blinnPhongOffsets);
-	//	vkCmdBindIndexBuffer(commandBuffer, m_BlinnPhongModel.m_IndexBuffer, 0, VK_INDEX_TYPE_UINT32);
-	//	vkCmdBindDescriptorSets(commandBuffer,
-	//		VK_PIPELINE_BIND_POINT_GRAPHICS,
-	//		m_BlinnPhongGraphicPipelineLayout,
-	//		0, 1,
-	//		&m_vecBlinnPhongDescriptorSets[uiIdx],
-	//		0, NULL);
-
-	//	vkCmdDrawIndexed(commandBuffer, static_cast<UINT>(m_BlinnPhongModel.m_vecIndices.size()), 1, 0, 0, 0);
-	//}
-
-	//if (m_bEnablePBR)
-	//{
-	//	vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m_PBRGraphicPipeline);
-	//	VkBuffer PBRVertexBuffers[] = {
-	//		m_PBRModel.m_VertexBuffer,
-	//	};
-	//	VkDeviceSize PBROffsets[]{ 0 };
-	//	vkCmdBindVertexBuffers(commandBuffer, 0, 1, PBRVertexBuffers, PBROffsets);
-	//	vkCmdBindIndexBuffer(commandBuffer, m_PBRModel.m_IndexBuffer, 0, VK_INDEX_TYPE_UINT32);
-	//	vkCmdBindDescriptorSets(commandBuffer,
-	//		VK_PIPELINE_BIND_POINT_GRAPHICS,
-	//		m_PBRGraphicPipelineLayout,
-	//		0, 1,
-	//		&m_vecPBRDescriptorSets[uiIdx],
-	//		0, NULL);
-
-	//	vkCmdDrawIndexed(commandBuffer, static_cast<UINT>(m_PBRModel.m_vecIndices.size()), 1, 0, 0, 0);
-	//}
-
-	//vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m_GraphicPipeline);
-	//VkBuffer vertexBuffers[] = {
-	//	m_Model.m_VertexBuffer,
-	//};
-	//VkDeviceSize offsets[]{ 0 };
-	//vkCmdBindVertexBuffers(commandBuffer, 0, 1, vertexBuffers, offsets);
-
-	//vkCmdBindIndexBuffer(commandBuffer, m_Model.m_IndexBuffer, 0, VK_INDEX_TYPE_UINT32);
-
-	//for (UINT i = 0; i < INSTANCE_NUM; ++i)
-	//{
-	//	UINT uiDynamicOffset = i * static_cast<UINT>(m_DynamicAlignment);
-
-	//	vkCmdBindDescriptorSets(commandBuffer,
-	//		VK_PIPELINE_BIND_POINT_GRAPHICS, //descriptorSet并非Pipeline独有，因此需要指定是用于Graphic Pipeline还是Compute Pipeline
-	//		m_GraphicPipelineLayout, //PipelineLayout中指定了descriptorSetLayout
-	//		0,	//descriptorSet数组中第一个元素的下标 
-	//		1,	//descriptorSet数组中元素的个数
-	//		&m_vecDescriptorSets[uiIdx],
-	//		1, //启用动态Uniform偏移
-	//		&uiDynamicOffset	//指定动态Uniform的偏移
-	//	);
-
-	//	vkCmdDrawIndexed(commandBuffer, static_cast<UINT>(m_Model.m_vecIndices.size()), 1, 0, 0, 0);
-	//}
-
-	m_testObjModel->Draw(commandBuffer, m_CommonGraphicPipeline, m_CommonGraphicPipelineLayout);
-
-	//m_testGLTFModel->Draw(commandBuffer, m_GLTFGraphicPipeline, m_GLTFGraphicPipelineLayout);
-
-	g_UI.Render(uiIdx);
-
-	vkCmdEndRenderPass(commandBuffer);
+	
 
 	VULKAN_ASSERT(vkEndCommandBuffer(commandBuffer), "End command buffer failed");
 }
@@ -3396,8 +3404,18 @@ void VulkanRenderer::WindowResize()
 
 void VulkanRenderer::CreateShadowMapResource()
 {
-
-
+	CreateShadowMapImage();
+	CreateShadowMapSampler();
+	CreateShadowMapRenderPass();
+	CreateShadowMapFrameBuffer();
+	CreateShadowMapUniformBufferAndMemory();
+	UpdateShaderMapUniformBuffer();
+	CreateShadowMapShaderModule();
+	CreateShadowMapDescriptorSetLayout();
+	CreateShadowMapDescriptorPool();
+	CreateShadowMapDescriptorSet();
+	CreateShadowMapPipelineLayout();
+	CreateShadowMapPipeline();
 
 	
 }

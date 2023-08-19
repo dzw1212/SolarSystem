@@ -232,11 +232,11 @@ private:
 	void CreateShadowMapUniformBufferAndMemory();
 	void UpdateShaderMapUniformBuffer();
 	void CreateShadowMapShaderModule();
-	void CreateShadowMapPipelineLayout();
-	void CreateShadowMapPipeline();
 	void CreateShadowMapDescriptorSetLayout();
 	void CreateShadowMapDescriptorPool();
 	void CreateShadowMapDescriptorSet();
+	void CreateShadowMapPipelineLayout();
+	void CreateShadowMapPipeline();
 
 public:
 	std::vector<PlanetInfo> m_vecPlanetInfo;

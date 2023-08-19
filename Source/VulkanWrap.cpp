@@ -426,7 +426,7 @@ namespace DZW_VulkanWrap
 		}
 	}
 
-	void OBJModel::Draw(VkCommandBuffer& commandBuffer, VkPipeline& pipeline, VkPipelineLayout& pipelineLayout)
+	void OBJModel::Draw(VkCommandBuffer& commandBuffer, VkPipeline& pipeline, VkPipelineLayout& pipelineLayout, VkDescriptorSet* pDescriptorSet)
 	{
 		vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
 		VkBuffer VertexBuffers[] = {
@@ -435,12 +435,25 @@ namespace DZW_VulkanWrap
 		VkDeviceSize Offsets[]{ 0 };
 		vkCmdBindVertexBuffers(commandBuffer, 0, 1, VertexBuffers, Offsets);
 		vkCmdBindIndexBuffer(commandBuffer, m_IndexBuffer, 0, VK_INDEX_TYPE_UINT32);
-		vkCmdBindDescriptorSets(commandBuffer,
-			VK_PIPELINE_BIND_POINT_GRAPHICS,
-			pipelineLayout,
-			0, 1,
-			&m_DescriptorSet,
-			0, NULL);
+		if (pDescriptorSet)
+		{
+			vkCmdBindDescriptorSets(commandBuffer,
+				VK_PIPELINE_BIND_POINT_GRAPHICS,
+				pipelineLayout,
+				0, 1,
+				pDescriptorSet,
+				0, NULL);
+		}
+		else
+		{
+			vkCmdBindDescriptorSets(commandBuffer,
+				VK_PIPELINE_BIND_POINT_GRAPHICS,
+				pipelineLayout,
+				0, 1,
+				&m_DescriptorSet,
+				0, NULL);
+		}
+
 
 		vkCmdDrawIndexed(commandBuffer, static_cast<UINT>(m_vecIndices.size()), 1, 0, 0, 0);
 	}
@@ -497,7 +510,7 @@ namespace DZW_VulkanWrap
 		vkFreeMemory(m_pRenderer->m_LogicalDevice, m_IndexBufferMemory, nullptr);
 	}
 
-	void GLTFModel::Draw(VkCommandBuffer& commandBuffer, VkPipeline& pipeline, VkPipelineLayout& pipelineLayout)
+	void GLTFModel::Draw(VkCommandBuffer& commandBuffer, VkPipeline& pipeline, VkPipelineLayout& pipelineLayout, VkDescriptorSet* pDescriptorSet)
 	{
 		vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
 		VkBuffer vertexBuffers[] = {

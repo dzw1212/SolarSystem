@@ -246,7 +246,8 @@ namespace DZW_VulkanWrap
 		};
 
 		virtual ModelType GetType() = 0;
-		virtual void Draw(VkCommandBuffer& commandBuffer, VkPipeline& pipeline, VkPipelineLayout& pipelineLayout) = 0;
+
+		virtual void Draw(VkCommandBuffer& commandBuffer, VkPipeline& pipeline, VkPipelineLayout& pipelineLayout, VkDescriptorSet* pDescriptorSet = nullptr) = 0;
 	public:
 		VulkanRenderer* m_pRenderer = nullptr;
 		std::filesystem::path m_Filepath;
@@ -267,7 +268,7 @@ namespace DZW_VulkanWrap
 
 		virtual ModelType GetType() { return ModelType::MODEL_TYPE_OBJ; }
 
-		virtual void Draw(VkCommandBuffer& commandBuffer, VkPipeline& pipeline, VkPipelineLayout& pipelineLayout);
+		virtual void Draw(VkCommandBuffer& commandBuffer, VkPipeline& pipeline, VkPipelineLayout& pipelineLayout, VkDescriptorSet* pDescriptorSet = nullptr);
 	
 	private: 
 		VkDescriptorSet m_DescriptorSet;
@@ -357,7 +358,7 @@ namespace DZW_VulkanWrap
 
 		virtual ModelType GetType() { return ModelType::MODEL_TYPE_GLTF; }
 
-		virtual void Draw(VkCommandBuffer& commandBuffer, VkPipeline& pipeline, VkPipelineLayout& pipelineLayout);
+		virtual void Draw(VkCommandBuffer& commandBuffer, VkPipeline& pipeline, VkPipelineLayout& pipelineLayout, VkDescriptorSet* pDescriptorSet = nullptr);
 
 		void DrawNode(int nNodeIdx, VkCommandBuffer& commandBuffer, VkPipeline& pipeline, VkPipelineLayout& pipelineLayout);
 	private:
