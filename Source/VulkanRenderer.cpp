@@ -2931,6 +2931,8 @@ void VulkanRenderer::RecordCommandBuffer(VkCommandBuffer& commandBuffer, UINT ui
 
 	//UpdateUniformBuffer(m_uiCurFrameIdx);
 
+	UpdateShaderMapUniformBuffer();
+
 	UpdateCommonMVPUniformBuffer(m_uiCurFrameIdx);
 
 	if (m_bEnableSkybox)
@@ -2992,10 +2994,15 @@ void VulkanRenderer::RecordCommandBuffer(VkCommandBuffer& commandBuffer, UINT ui
 	scissor.extent = m_SwapChainExtent2D;
 	vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
 
-	vkCmdSetDepthBias(commandBuffer, depthBiasConstant, 0.0f, depthBiasSlope);
+	//vkCmdSetDepthBias(commandBuffer, depthBiasConstant, 0.0f, depthBiasSlope);
 
-	vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelines.offscreen);
-	vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, 0, 1, &descriptorSets.offscreen, 0, nullptr);
+	vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m_ShadowMapPipeline);
+	vkCmdBindDescriptorSets(commandBuffer, 
+		VK_PIPELINE_BIND_POINT_GRAPHICS, 
+		m_ShadowMapPipelineLayout, 
+		0, 1,
+		&m_ShadowMapDescriptorSet, 
+		0, nullptr);
 
 	vkCmdEndRenderPass(commandBuffer);
 
@@ -3495,6 +3502,35 @@ void VulkanRenderer::CreateShadowMapFrameBuffer()
 	VULKAN_ASSERT(vkCreateFramebuffer(m_LogicalDevice, &fbufCreateInfo, nullptr, &m_ShadowMapFrameBuffer), "Create shadow map frameBuffer failed");
 }
 
+void VulkanRenderer::CreateShadowMapUniformBufferAndMemory()
+{
+	CreateBufferAndBindMemory(sizeof(MVPUniformBufferObject),
+		VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
+		VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+		m_ShadowMapUniformBuffer,
+		m_ShadowMapUniformBufferMemory
+	);
+}
+
+void VulkanRenderer::UpdateShaderMapUniformBuffer()
+{
+	MVPUniformBufferObject MVPUbo;
+	glm::vec3 lightPos = { 0.f, 0.f, 10.f };
+
+	glm::mat4 model = glm::translate(glm::mat4(1.f), lightPos);
+	glm::mat4 view = glm::lookAt(lightPos, { 0.f, 0.f, 0.f }, { 0.f, 1.f, 0.f });
+	glm::mat4 proj = glm::perspective(glm::radians(45.f), 
+		(float)m_SwapChainExtent2D.width / (float)m_SwapChainExtent2D.height,
+		0.1f, 1000.f);
+	
+	MVPUbo.MVPMat = model * view * proj;
+
+	void* uniformBufferData;
+	vkMapMemory(m_LogicalDevice, m_ShadowMapUniformBufferMemory, 0, sizeof(MVPUniformBufferObject), 0, &uniformBufferData);
+	memcpy(uniformBufferData, &MVPUbo, sizeof(MVPUniformBufferObject));
+	vkUnmapMemory(m_LogicalDevice, m_ShadowMapUniformBufferMemory);
+}
+
 void VulkanRenderer::CreateShadowMapShaderModule()
 {
 	std::unordered_map<VkShaderStageFlagBits, std::filesystem::path> mapShaderPath = {
@@ -3653,14 +3689,74 @@ void VulkanRenderer::CreateShadowMapPipeline()
 
 void VulkanRenderer::CreateShadowMapDescriptorSetLayout()
 {
+	//MVP UBO Binding
+	VkDescriptorSetLayoutBinding MVPUBOLayoutBinding{};
+	MVPUBOLayoutBinding.binding = 0;
+	MVPUBOLayoutBinding.descriptorCount = 1;
+	MVPUBOLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+	MVPUBOLayoutBinding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+	MVPUBOLayoutBinding.pImmutableSamplers = nullptr;
+
+	std::vector<VkDescriptorSetLayoutBinding> vecDescriptorLayoutBinding = {
+		MVPUBOLayoutBinding,
+	};
+
+	VkDescriptorSetLayoutCreateInfo createInfo{};
+	createInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+	createInfo.bindingCount = static_cast<UINT>(vecDescriptorLayoutBinding.size());
+	createInfo.pBindings = vecDescriptorLayoutBinding.data();
+
+	VULKAN_ASSERT(vkCreateDescriptorSetLayout(m_LogicalDevice, &createInfo, nullptr, &m_ShadowMapDescriptorSetLayout), "Create shadow map descriptor layout failed");
 }
 
 void VulkanRenderer::CreateShadowMapDescriptorPool()
 {
+	VkDescriptorPoolSize MVPUBOPoolSize{};
+	MVPUBOPoolSize.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+	MVPUBOPoolSize.descriptorCount = 1;
+
+	std::vector<VkDescriptorPoolSize> vecPoolSize = {
+		MVPUBOPoolSize,
+	};
+
+	VkDescriptorPoolCreateInfo poolCreateInfo{};
+	poolCreateInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+	poolCreateInfo.poolSizeCount = static_cast<UINT>(vecPoolSize.size());
+	poolCreateInfo.pPoolSizes = vecPoolSize.data();
+	poolCreateInfo.maxSets = 1;
+
+	VULKAN_ASSERT(vkCreateDescriptorPool(m_LogicalDevice, &poolCreateInfo, nullptr, &m_ShadowMapDescriptorPool), "Create shadow map descriptor pool failed");
 }
 
 void VulkanRenderer::CreateShadowMapDescriptorSet()
 {
+	VkDescriptorSetAllocateInfo allocInfo{};
+	allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+	allocInfo.descriptorSetCount = 1;
+	allocInfo.descriptorPool = m_ShadowMapDescriptorPool;
+	allocInfo.pSetLayouts = &m_ShadowMapDescriptorSetLayout;
+
+	VULKAN_ASSERT(vkAllocateDescriptorSets(m_LogicalDevice, &allocInfo, &m_ShadowMapDescriptorSet), "Allocate shadow map desctiprot sets failed");
+
+	VkDescriptorBufferInfo MVPDescriptorBufferInfo{};
+	MVPDescriptorBufferInfo.buffer = m_ShadowMapUniformBuffer;
+	MVPDescriptorBufferInfo.offset = 0;
+	MVPDescriptorBufferInfo.range = sizeof(MVPUniformBufferObject);
+
+	VkWriteDescriptorSet MVPUBOWrite{};
+	MVPUBOWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+	MVPUBOWrite.dstSet = m_ShadowMapDescriptorSet;
+	MVPUBOWrite.dstBinding = 0;
+	MVPUBOWrite.dstArrayElement = 0;
+	MVPUBOWrite.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+	MVPUBOWrite.descriptorCount = 1;
+	MVPUBOWrite.pBufferInfo = &MVPDescriptorBufferInfo;
+
+	std::vector<VkWriteDescriptorSet> vecDescriptorWrite = {
+		MVPUBOWrite,
+	};
+
+	vkUpdateDescriptorSets(m_LogicalDevice, static_cast<UINT>(vecDescriptorWrite.size()), vecDescriptorWrite.data(), 0, nullptr);
 }
 
 void VulkanRenderer::LoadPlanetInfo()

@@ -229,6 +229,8 @@ private:
 	void CreateShadowMapSampler();
 	void CreateShadowMapRenderPass();
 	void CreateShadowMapFrameBuffer();
+	void CreateShadowMapUniformBufferAndMemory();
+	void UpdateShaderMapUniformBuffer();
 	void CreateShadowMapShaderModule();
 	void CreateShadowMapPipelineLayout();
 	void CreateShadowMapPipeline();
@@ -317,7 +319,10 @@ public:
 	void CreateCommonGraphicPipeline();
 
 public:
-	
+	struct MVPUniformBufferObject
+	{
+		glm::mat4 MVPMat;
+	};
 
 public:
 	void CreateGLTFShader();
@@ -561,6 +566,8 @@ private:
 	VkDeviceMemory m_ShadowMapDepthImageMemory;
 	VkSampler m_ShadowMapSampler; //对ShadowMap进行采样
 	VkFramebuffer m_ShadowMapFrameBuffer; //只需要一个即可
+	VkBuffer m_ShadowMapUniformBuffer;
+	VkDeviceMemory m_ShadowMapUniformBufferMemory;
 	std::unordered_map<VkShaderStageFlagBits, VkShaderModule> m_mapShadowMapShaderModule;
 	VkPipeline m_ShadowMapPipeline;
 	VkPipelineLayout m_ShadowMapPipelineLayout;

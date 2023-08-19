@@ -6,6 +6,8 @@ layout (location = 2) in vec3 inColor;
 
 layout (location = 0) out vec4 outColor;
 
+layout (binding = 1) uniform sampler2D shadowMapSampler;
+
 void main() 
 {
     vec3 lightColor = vec3(1.0, 1.0, 1.0);
