@@ -224,6 +224,18 @@ private:
 
 	void WindowResize();
 
+	void CreateShadowMapResource();
+	void CreateShadowMapImage();
+	void CreateShadowMapSampler();
+	void CreateShadowMapRenderPass();
+	void CreateShadowMapFrameBuffer();
+	void CreateShadowMapShaderModule();
+	void CreateShadowMapPipelineLayout();
+	void CreateShadowMapPipeline();
+	void CreateShadowMapDescriptorSetLayout();
+	void CreateShadowMapDescriptorPool();
+	void CreateShadowMapDescriptorSet();
+
 public:
 	std::vector<PlanetInfo> m_vecPlanetInfo;
 	void LoadPlanetInfo();
@@ -290,6 +302,7 @@ public:
 		glm::mat4 model;
 		glm::mat4 view;
 		glm::mat4 proj;
+		glm::mat4 mv_normal; //用于将normal转到视图空间
 	};
 
 	void CreateCommonShader();
@@ -541,6 +554,21 @@ private:
 
 	bool m_bNeedResize = false;
 
+	//Shadow
+	VkRenderPass m_ShadowMapRenderPass;
+	VkImage m_ShadowMapDepthImage;
+	VkImageView m_ShadowMapDepthImageView;
+	VkDeviceMemory m_ShadowMapDepthImageMemory;
+	VkSampler m_ShadowMapSampler; //对ShadowMap进行采样
+	VkFramebuffer m_ShadowMapFrameBuffer; //只需要一个即可
+	std::unordered_map<VkShaderStageFlagBits, VkShaderModule> m_mapShadowMapShaderModule;
+	VkPipeline m_ShadowMapPipeline;
+	VkPipelineLayout m_ShadowMapPipelineLayout;
+	VkDescriptorPool m_ShadowMapDescriptorPool;
+	VkDescriptorSetLayout m_ShadowMapDescriptorSetLayout;
+	VkDescriptorSet m_ShadowMapDescriptorSet;
+
+
 	/********************独立资源**********************/
 
 	//OBJ Model
@@ -560,6 +588,8 @@ private:
 	VkPipelineCache m_CommonGraphicPipelineCache = VK_NULL_HANDLE;
 
 	std::unique_ptr<DZW_VulkanWrap::Model> m_testObjModel;
+
+
 
 	//glTF Model
 	//具有baseColor，normal，occlusionMetallicRoughness三张贴图

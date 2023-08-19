@@ -335,15 +335,21 @@ namespace DZW_VulkanWrap
 						};
 					}
 					
-					std::random_device rd;
-					std::mt19937 gen(rd());
-					std::uniform_int_distribution<> dis(0, 255);
+					if (false) //random color
+					{
+						std::random_device rd;
+						std::mt19937 gen(rd());
+						std::uniform_int_distribution<> dis(0, 255);
 
-					int red = dis(gen);
-					int green = dis(gen);
-					int blue = dis(gen);
+						int red = dis(gen);
+						int green = dis(gen);
+						int blue = dis(gen);
 
-					vert.color = { red / 255.f, green / 255.f, blue / 255.f };
+						vert.color = { red / 255.f, green / 255.f, blue / 255.f };
+					}
+					else
+						vert.color = { 1.f, 1.f, 1.f };
+					
 
 					if (true) //vulkan flipY
 					{

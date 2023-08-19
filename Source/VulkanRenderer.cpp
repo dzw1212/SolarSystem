@@ -78,6 +78,8 @@ void VulkanRenderer::Init()
 	
 	CreateSyncObjects();
 
+	CreateShadowMapResource();
+
 	SetupCamera();
 
 	g_UI.Init(this);
@@ -96,7 +98,7 @@ void VulkanRenderer::Init()
 	CreateCommonGraphicPipelineLayout();
 	CreateCommonGraphicPipeline();
 
-	m_testObjModel = DZW_VulkanWrap::ModelFactor::CreateModel(this, "./Assert/Model/samplescene.obj");
+	m_testObjModel = DZW_VulkanWrap::ModelFactor::CreateModel(this, "./Assert/Model/Shadow/samplescene.obj");
 
 	//glTF Model
 	CreateGLTFShader();
@@ -107,7 +109,7 @@ void VulkanRenderer::Init()
 	CreateGLTFGraphicPipelineLayout();
 	CreateGLTFGraphicPipeline();
 
-	m_testGLTFModel = DZW_VulkanWrap::ModelFactor::CreateModel(this, "./Assert/Model/samplescene.gltf");
+	//m_testGLTFModel = DZW_VulkanWrap::ModelFactor::CreateModel(this, "./Assert/Model/samplescene.gltf");
 	
 	//LoadPlanetInfo();
 
@@ -335,7 +337,7 @@ void VulkanRenderer::Clean()
 	vkDestroyPipeline(m_LogicalDevice, m_GLTFGraphicPipeline, nullptr);
 	vkDestroyPipelineLayout(m_LogicalDevice, m_GLTFGraphicPipelineLayout, nullptr);
 
-	m_testGLTFModel.reset();
+	//m_testGLTFModel.reset();
 
 	//----------------------------------------------------------------------------
 	//_aligned_free(m_DynamicUboData.model);
@@ -1909,8 +1911,14 @@ void VulkanRenderer::CreateSyncObjects()
 
 void VulkanRenderer::SetupCamera()
 {
-	m_Camera.Init(45.f, static_cast<float>(m_SwapChainExtent2D.width), static_cast<float>(m_SwapChainExtent2D.height), 0.1f, 10000.f,
-		m_pWindow, { 0.f, 0.f, -10.f }, { 0.f, 0.f, 0.f }, true);
+	m_Camera.Init(45.f, 
+		static_cast<float>(m_SwapChainExtent2D.width), 
+		static_cast<float>(m_SwapChainExtent2D.height), 
+		0.1f, 10000.f,
+		m_pWindow, 
+		{ 0.f, 0.f, -20.f }, 
+		{ 0.f, 0.f, 0.f }, 
+		true);
 
 	glfwSetWindowUserPointer(m_pWindow, (void*)&m_Camera);
 
@@ -2956,6 +2964,41 @@ void VulkanRenderer::RecordCommandBuffer(VkCommandBuffer& commandBuffer, UINT ui
 
 	VULKAN_ASSERT(vkBeginCommandBuffer(commandBuffer, &commandBufferBeginInfo), "Begin command buffer failed");
 
+	//First renderpass
+	VkRenderPassBeginInfo shadowMapRenderPassBeginInfo{};
+	shadowMapRenderPassBeginInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
+	shadowMapRenderPassBeginInfo.renderPass = m_ShadowMapRenderPass;
+	shadowMapRenderPassBeginInfo.framebuffer = m_ShadowMapFrameBuffer;
+	shadowMapRenderPassBeginInfo.renderArea.offset = { 0, 0 };
+	shadowMapRenderPassBeginInfo.renderArea.extent = m_SwapChainExtent2D;
+	std::array<VkClearValue, 2> aryClearColor;
+	aryClearColor[0].color = { 0.f, 0.f, 0.f, 1.f };
+	aryClearColor[1].depthStencil = { 1.f, 0 };
+	shadowMapRenderPassBeginInfo.clearValueCount = static_cast<UINT>(aryClearColor.size());
+	shadowMapRenderPassBeginInfo.pClearValues = aryClearColor.data();
+	vkCmdBeginRenderPass(commandBuffer, &shadowMapRenderPassBeginInfo, VK_SUBPASS_CONTENTS_INLINE);
+
+	VkViewport viewport{};
+	viewport.x = 0.f;
+	viewport.y = 0.f;
+	viewport.width = static_cast<float>(m_SwapChainExtent2D.width);
+	viewport.height = static_cast<float>(m_SwapChainExtent2D.height);
+	viewport.minDepth = 0.f;
+	viewport.maxDepth = 1.f;
+	vkCmdSetViewport(commandBuffer, 0, 1, &viewport);
+
+	VkRect2D scissor{};
+	scissor.offset = { 0, 0 };
+	scissor.extent = m_SwapChainExtent2D;
+	vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
+
+	vkCmdSetDepthBias(commandBuffer, depthBiasConstant, 0.0f, depthBiasSlope);
+
+	vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelines.offscreen);
+	vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, 0, 1, &descriptorSets.offscreen, 0, nullptr);
+
+	vkCmdEndRenderPass(commandBuffer);
+
 	VkRenderPassBeginInfo renderPassBeginInfo{};
 	renderPassBeginInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
 	renderPassBeginInfo.renderPass = m_RenderPass;
@@ -3342,6 +3385,282 @@ void VulkanRenderer::WindowResize()
 		m_vecCommandBuffers.data());
 	
 	CreateCommandBuffers();
+}
+
+void VulkanRenderer::CreateShadowMapResource()
+{
+
+
+
+	
+}
+
+void VulkanRenderer::CreateShadowMapImage()
+{
+	//Image, ImageView, Memory
+	CreateImageAndBindMemory(m_SwapChainExtent2D.width, m_SwapChainExtent2D.height,
+		1, 1, 1,
+		VK_SAMPLE_COUNT_1_BIT,
+		m_DepthFormat,
+		VK_IMAGE_TILING_OPTIMAL,
+		VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, //用于sampler
+		VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+		m_ShadowMapDepthImage, m_ShadowMapDepthImageMemory);
+
+	m_ShadowMapDepthImageView = CreateImageView(m_ShadowMapDepthImage, m_DepthFormat, VK_IMAGE_ASPECT_DEPTH_BIT, 1, 1, 1);
+}
+
+void VulkanRenderer::CreateShadowMapSampler()
+{
+	//Sampler
+	VkSamplerCreateInfo sampler = {};
+	sampler.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
+	sampler.magFilter = VK_FILTER_LINEAR;
+	sampler.minFilter = VK_FILTER_LINEAR;
+	sampler.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
+	sampler.addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+	sampler.addressModeV = sampler.addressModeU;
+	sampler.addressModeW = sampler.addressModeU;
+	sampler.mipLodBias = 0.0f;
+	sampler.maxAnisotropy = 1.0f;
+	sampler.minLod = 0.0f;
+	sampler.maxLod = 1.0f;
+	sampler.borderColor = VK_BORDER_COLOR_FLOAT_OPAQUE_WHITE;
+	VULKAN_ASSERT(vkCreateSampler(m_LogicalDevice, &sampler, nullptr, &m_ShadowMapSampler));
+}
+
+void VulkanRenderer::CreateShadowMapRenderPass()
+{
+	//Render Pass
+	VkAttachmentDescription attachmentDescription{};
+	attachmentDescription.format = m_DepthFormat;
+	attachmentDescription.samples = VK_SAMPLE_COUNT_1_BIT;
+	attachmentDescription.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+	attachmentDescription.storeOp = VK_ATTACHMENT_STORE_OP_STORE; //保存渲染结果
+	attachmentDescription.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+	attachmentDescription.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+	attachmentDescription.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+	attachmentDescription.finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
+
+	VkAttachmentReference depthReference = {};
+	depthReference.attachment = 0;
+	depthReference.layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+
+	VkSubpassDescription subpass = {};
+	subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
+	subpass.colorAttachmentCount = 0;
+	subpass.pDepthStencilAttachment = &depthReference; //没有color attachment，只有一个depth attachment
+
+	std::array<VkSubpassDependency, 2> dependencies = {};
+
+	dependencies[0].srcSubpass = VK_SUBPASS_EXTERNAL;
+	dependencies[0].dstSubpass = 0;
+	dependencies[0].srcStageMask = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+	dependencies[0].dstStageMask = VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
+	dependencies[0].srcAccessMask = VK_ACCESS_SHADER_READ_BIT;
+	dependencies[0].dstAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+	dependencies[0].dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
+
+	dependencies[1].srcSubpass = 0;
+	dependencies[1].dstSubpass = VK_SUBPASS_EXTERNAL;
+	dependencies[1].srcStageMask = VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
+	dependencies[1].dstStageMask = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+	dependencies[1].srcAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+	dependencies[1].dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+	dependencies[1].dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
+
+	VkRenderPassCreateInfo renderPassCreateInfo = {};
+	renderPassCreateInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
+	renderPassCreateInfo.attachmentCount = 1;
+	renderPassCreateInfo.pAttachments = &attachmentDescription;
+	renderPassCreateInfo.subpassCount = 1;
+	renderPassCreateInfo.pSubpasses = &subpass;
+	renderPassCreateInfo.dependencyCount = static_cast<UINT>(dependencies.size());
+	renderPassCreateInfo.pDependencies = dependencies.data();
+
+	VULKAN_ASSERT(vkCreateRenderPass(m_LogicalDevice, &renderPassCreateInfo, nullptr, &m_ShadowMapRenderPass), "Create shadow map renderpass failed");
+}
+
+void VulkanRenderer::CreateShadowMapFrameBuffer()
+{
+	//FrameBuffer
+	VkFramebufferCreateInfo fbufCreateInfo = {};
+	fbufCreateInfo.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
+	fbufCreateInfo.renderPass = m_ShadowMapRenderPass;
+	fbufCreateInfo.attachmentCount = 1;
+	fbufCreateInfo.pAttachments = &m_ShadowMapDepthImageView;
+	fbufCreateInfo.width = m_SwapChainExtent2D.width;
+	fbufCreateInfo.height = m_SwapChainExtent2D.height;
+	fbufCreateInfo.layers = 1;
+	VULKAN_ASSERT(vkCreateFramebuffer(m_LogicalDevice, &fbufCreateInfo, nullptr, &m_ShadowMapFrameBuffer), "Create shadow map frameBuffer failed");
+}
+
+void VulkanRenderer::CreateShadowMapShaderModule()
+{
+	std::unordered_map<VkShaderStageFlagBits, std::filesystem::path> mapShaderPath = {
+		{ VK_SHADER_STAGE_VERTEX_BIT,	"./Assert/Shader/ShadowMap/vert.spv" },
+	};
+	ASSERT(mapShaderPath.size() > 0, "Detect no shader spv file");
+
+	m_mapShadowMapShaderModule.clear();
+
+	for (const auto& spvPath : mapShaderPath)
+	{
+		auto shaderModule = DZW_VulkanUtils::CreateShaderModule(m_LogicalDevice, DZW_VulkanUtils::ReadShaderFile(spvPath.second));
+
+		m_mapShadowMapShaderModule[spvPath.first] = shaderModule;
+	}
+}
+
+void VulkanRenderer::CreateShadowMapPipelineLayout()
+{
+	VkPipelineLayoutCreateInfo pipelineLayoutCreateInfo{};
+	pipelineLayoutCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+	pipelineLayoutCreateInfo.setLayoutCount = 1;
+	pipelineLayoutCreateInfo.pSetLayouts = &m_ShadowMapDescriptorSetLayout;
+	pipelineLayoutCreateInfo.pushConstantRangeCount = 0;
+	pipelineLayoutCreateInfo.pPushConstantRanges = nullptr;
+
+	VULKAN_ASSERT(vkCreatePipelineLayout(m_LogicalDevice, &pipelineLayoutCreateInfo, nullptr, &m_ShadowMapPipelineLayout), "Create shadow map pipeline layout failed");
+}
+
+void VulkanRenderer::CreateShadowMapPipeline()
+{
+	/****************************可编程管线*******************************/
+	VkPipelineShaderStageCreateInfo vertShaderStageCreateInfo{};
+	vertShaderStageCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+	vertShaderStageCreateInfo.stage = VK_SHADER_STAGE_VERTEX_BIT;
+	vertShaderStageCreateInfo.module = m_mapShadowMapShaderModule.at(VK_SHADER_STAGE_VERTEX_BIT); //Bytecode
+	vertShaderStageCreateInfo.pName = "main"; //要invoke的函数
+
+	VkPipelineShaderStageCreateInfo shaderStageCreateInfos[] = {
+		vertShaderStageCreateInfo,
+	};
+
+	/*****************************固定管线*******************************/
+
+	//-----------------------Dynamic State--------------------------//
+	//一般会将Viewport和Scissor设为dynamic，以方便随时修改
+	VkPipelineDynamicStateCreateInfo dynamicStateCreateInfo{};
+	dynamicStateCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO;
+
+	std::vector<VkDynamicState> vecDynamicStates = {
+		VK_DYNAMIC_STATE_VIEWPORT,
+		VK_DYNAMIC_STATE_SCISSOR,
+	};
+	dynamicStateCreateInfo.dynamicStateCount = static_cast<UINT>(vecDynamicStates.size());
+	dynamicStateCreateInfo.pDynamicStates = vecDynamicStates.data();
+
+
+	//-----------------------Vertex Input State--------------------------//
+	auto bindingDescription = Vertex3D::GetBindingDescription();
+	auto attributeDescriptions = Vertex3D::GetAttributeDescriptions();
+	VkPipelineVertexInputStateCreateInfo vertexInputCreateInfo{};
+	vertexInputCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
+	vertexInputCreateInfo.vertexBindingDescriptionCount = 1;
+	vertexInputCreateInfo.pVertexBindingDescriptions = &bindingDescription;
+	vertexInputCreateInfo.vertexAttributeDescriptionCount = static_cast<UINT>(attributeDescriptions.size());
+	vertexInputCreateInfo.pVertexAttributeDescriptions = attributeDescriptions.data();
+
+	//-----------------------Input Assembly State------------------------//
+	VkPipelineInputAssemblyStateCreateInfo inputAssemblyCreateInfo{};
+	inputAssemblyCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
+	inputAssemblyCreateInfo.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+	inputAssemblyCreateInfo.primitiveRestartEnable = VK_FALSE;
+
+
+	//-----------------------Viewport State--------------------------//
+	VkPipelineViewportStateCreateInfo viewportStateCreateInfo{};
+	viewportStateCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
+	viewportStateCreateInfo.viewportCount = 1;
+	viewportStateCreateInfo.scissorCount = 1;
+
+	//-----------------------Raserization State--------------------------//
+	VkPipelineRasterizationStateCreateInfo rasterizationStateCreateInfo{};
+	rasterizationStateCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
+	rasterizationStateCreateInfo.depthClampEnable = VK_FALSE;	//开启后，超过远近平面的部分会被截断在远近平面上，而不是丢弃
+	rasterizationStateCreateInfo.rasterizerDiscardEnable = VK_FALSE;	//开启后，禁止所有图元经过光栅化器
+	rasterizationStateCreateInfo.polygonMode = VK_POLYGON_MODE_FILL;	//图元模式，可以是FILL、LINE、POINT
+	rasterizationStateCreateInfo.lineWidth = 1.f;	//指定光栅化后的线段宽度
+	rasterizationStateCreateInfo.cullMode = VK_CULL_MODE_NONE;	//剔除模式，可以是NONE、FRONT、BACK、FRONT_AND_BACK
+	rasterizationStateCreateInfo.frontFace = VK_FRONT_FACE_CLOCKWISE; //顶点序，可以是顺时针cw或逆时针ccw
+	rasterizationStateCreateInfo.depthBiasEnable = VK_FALSE; //深度偏移，一般用于Shaodw Map中避免阴影痤疮
+	rasterizationStateCreateInfo.depthBiasConstantFactor = 0.f;
+	rasterizationStateCreateInfo.depthBiasClamp = 0.f;
+	rasterizationStateCreateInfo.depthBiasSlopeFactor = 0.f;
+
+	//-----------------------Multisample State--------------------------//
+	VkPipelineMultisampleStateCreateInfo multisamplingStateCreateInfo{};
+	multisamplingStateCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
+	multisamplingStateCreateInfo.sampleShadingEnable = false;
+	multisamplingStateCreateInfo.minSampleShading = 0.8f;
+	multisamplingStateCreateInfo.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
+	multisamplingStateCreateInfo.minSampleShading = 1.f;
+	multisamplingStateCreateInfo.pSampleMask = nullptr;
+	multisamplingStateCreateInfo.alphaToCoverageEnable = VK_FALSE;
+	multisamplingStateCreateInfo.alphaToOneEnable = VK_FALSE;
+
+	//-----------------------Depth Stencil State--------------------------//
+	VkPipelineDepthStencilStateCreateInfo depthStencilStateCreateInfo{};
+	depthStencilStateCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
+	depthStencilStateCreateInfo.depthTestEnable = VK_TRUE;
+	depthStencilStateCreateInfo.depthWriteEnable = VK_TRUE;
+	depthStencilStateCreateInfo.depthCompareOp = VK_COMPARE_OP_LESS_OR_EQUAL;
+	depthStencilStateCreateInfo.depthBoundsTestEnable = VK_FALSE;
+	depthStencilStateCreateInfo.minDepthBounds = 0.f;
+	depthStencilStateCreateInfo.maxDepthBounds = 1.f;
+	depthStencilStateCreateInfo.stencilTestEnable = VK_FALSE;
+	depthStencilStateCreateInfo.front = {};
+	depthStencilStateCreateInfo.back = {};
+
+	//-----------------------Color Blend State--------------------------//
+	VkPipelineColorBlendStateCreateInfo colorBlendStateCreateInfo{};
+	colorBlendStateCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
+	colorBlendStateCreateInfo.logicOpEnable = VK_FALSE;
+	colorBlendStateCreateInfo.logicOp = VK_LOGIC_OP_COPY;
+	colorBlendStateCreateInfo.attachmentCount = 0;
+	colorBlendStateCreateInfo.pAttachments = nullptr;
+	colorBlendStateCreateInfo.blendConstants[0] = 0.f;
+	colorBlendStateCreateInfo.blendConstants[1] = 0.f;
+	colorBlendStateCreateInfo.blendConstants[2] = 0.f;
+	colorBlendStateCreateInfo.blendConstants[3] = 0.f;
+
+	/***********************************************************************/
+	VkGraphicsPipelineCreateInfo pipelineCreateInfo{};
+	pipelineCreateInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
+	pipelineCreateInfo.stageCount = static_cast<UINT>(m_mapShadowMapShaderModule.size());
+	pipelineCreateInfo.pStages = shaderStageCreateInfos;
+	pipelineCreateInfo.pDynamicState = &dynamicStateCreateInfo;
+	pipelineCreateInfo.pVertexInputState = &vertexInputCreateInfo;
+	pipelineCreateInfo.pInputAssemblyState = &inputAssemblyCreateInfo;
+	pipelineCreateInfo.pViewportState = &viewportStateCreateInfo;
+	pipelineCreateInfo.pRasterizationState = &rasterizationStateCreateInfo;
+	pipelineCreateInfo.pMultisampleState = &multisamplingStateCreateInfo;
+	pipelineCreateInfo.pDepthStencilState = &depthStencilStateCreateInfo;
+	pipelineCreateInfo.pColorBlendState = &colorBlendStateCreateInfo;
+	pipelineCreateInfo.layout = m_ShadowMapPipelineLayout;
+	pipelineCreateInfo.renderPass = m_ShadowMapRenderPass;
+	pipelineCreateInfo.subpass = 0;
+	pipelineCreateInfo.basePipelineHandle = VK_NULL_HANDLE;
+	pipelineCreateInfo.basePipelineIndex = -1;
+
+	//创建管线时，如果提供了VkPipelineCache对象，Vulkan会尝试从中重用数据
+	//如果没有可重用的数据，新的数据会被添加到缓存中
+	VkPipelineCache pipelineCache = m_CommonGraphicPipelineCache;
+
+	VULKAN_ASSERT(vkCreateGraphicsPipelines(m_LogicalDevice, pipelineCache, 1, &pipelineCreateInfo, nullptr, &m_ShadowMapPipeline), "Create shadow map pipeline failed");
+}
+
+void VulkanRenderer::CreateShadowMapDescriptorSetLayout()
+{
+}
+
+void VulkanRenderer::CreateShadowMapDescriptorPool()
+{
+}
+
+void VulkanRenderer::CreateShadowMapDescriptorSet()
+{
 }
 
 void VulkanRenderer::LoadPlanetInfo()
@@ -4230,6 +4549,7 @@ void VulkanRenderer::UpdateCommonMVPUniformBuffer(UINT uiIdx)
 	m_CommonMVPUboData.model = glm::translate(glm::mat4(1.f), { 0.f, 0.f, 0.f });
 	m_CommonMVPUboData.view = m_Camera.GetViewMatrix();
 	m_CommonMVPUboData.proj = m_Camera.GetProjMatrix();
+	m_CommonMVPUboData.mv_normal = glm::transpose(glm::inverse(m_CommonMVPUboData.view * m_CommonMVPUboData.model));
 
 	void* uniformBufferData;
 	vkMapMemory(m_LogicalDevice, m_CommonMVPUniformBufferMemory, 0, sizeof(CommonMVPUniformBufferObject), 0, &uniformBufferData);
