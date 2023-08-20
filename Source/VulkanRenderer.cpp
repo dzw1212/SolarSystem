@@ -2997,14 +2997,6 @@ void VulkanRenderer::RecordCommandBuffer(VkCommandBuffer& commandBuffer, UINT ui
 
 		//vkCmdSetDepthBias(commandBuffer, depthBiasConstant, 0.0f, depthBiasSlope);
 
-		vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m_ShadowMapPipeline);
-		vkCmdBindDescriptorSets(commandBuffer,
-			VK_PIPELINE_BIND_POINT_GRAPHICS,
-			m_ShadowMapPipelineLayout,
-			0, 1,
-			&m_ShadowMapDescriptorSet,
-			0, nullptr);
-
 		m_testObjModel->Draw(commandBuffer, m_ShadowMapPipeline, m_ShadowMapPipelineLayout, &m_ShadowMapDescriptorSet);
 
 		vkCmdEndRenderPass(commandBuffer);
@@ -3433,6 +3425,11 @@ void VulkanRenderer::CreateShadowMapImage()
 		m_ShadowMapDepthImage, m_ShadowMapDepthImageMemory);
 
 	m_ShadowMapDepthImageView = CreateImageView(m_ShadowMapDepthImage, m_DepthFormat, VK_IMAGE_ASPECT_DEPTH_BIT, 1, 1, 1);
+
+	ChangeImageLayout(m_ShadowMapDepthImage, m_DepthFormat,
+		1, 1, 1,
+		VK_IMAGE_LAYOUT_UNDEFINED,
+		VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL);
 }
 
 void VulkanRenderer::CreateShadowMapSampler()
@@ -3532,20 +3529,20 @@ void VulkanRenderer::CreateShadowMapUniformBufferAndMemory()
 
 void VulkanRenderer::UpdateShaderMapUniformBuffer()
 {
-	MVPUniformBufferObject MVPUbo;
-	glm::vec3 lightPos = { 0.f, 0.f, 10.f };
+	glm::vec3 lightPos = { -13.77,-2.62, 14.48 };
+	glm::vec3 lightFocus = { 0.01f, -2.52, -0.01 };
 
 	glm::mat4 model = glm::translate(glm::mat4(1.f), lightPos);
-	glm::mat4 view = glm::lookAt(lightPos, { 0.f, 0.f, 0.f }, { 0.f, 1.f, 0.f });
+	glm::mat4 view = glm::lookAt(lightPos, lightFocus, { 0.f, 1.f, 0.f });
 	glm::mat4 proj = glm::perspective(glm::radians(45.f), 
 		(float)m_SwapChainExtent2D.width / (float)m_SwapChainExtent2D.height,
 		0.1f, 1000.f);
 	
-	MVPUbo.MVPMat = model * view * proj;
+	m_ShadowMapUBOData.MVPMat = model * view * proj;
 
 	void* uniformBufferData;
 	vkMapMemory(m_LogicalDevice, m_ShadowMapUniformBufferMemory, 0, sizeof(MVPUniformBufferObject), 0, &uniformBufferData);
-	memcpy(uniformBufferData, &MVPUbo, sizeof(MVPUniformBufferObject));
+	memcpy(uniformBufferData, &m_ShadowMapUBOData, sizeof(MVPUniformBufferObject));
 	vkUnmapMemory(m_LogicalDevice, m_ShadowMapUniformBufferMemory);
 }
 
@@ -3638,7 +3635,7 @@ void VulkanRenderer::CreateShadowMapPipeline()
 	rasterizationStateCreateInfo.lineWidth = 1.f;	//指定光栅化后的线段宽度
 	rasterizationStateCreateInfo.cullMode = VK_CULL_MODE_NONE;	//剔除模式，可以是NONE、FRONT、BACK、FRONT_AND_BACK
 	rasterizationStateCreateInfo.frontFace = VK_FRONT_FACE_CLOCKWISE; //顶点序，可以是顺时针cw或逆时针ccw
-	rasterizationStateCreateInfo.depthBiasEnable = VK_FALSE; //深度偏移，一般用于Shaodw Map中避免阴影痤疮
+	rasterizationStateCreateInfo.depthBiasEnable = VK_TRUE; //深度偏移，一般用于Shaodw Map中避免阴影痤疮
 	rasterizationStateCreateInfo.depthBiasConstantFactor = 0.f;
 	rasterizationStateCreateInfo.depthBiasClamp = 0.f;
 	rasterizationStateCreateInfo.depthBiasSlopeFactor = 0.f;
@@ -4664,6 +4661,13 @@ void VulkanRenderer::UpdateCommonMVPUniformBuffer(UINT uiIdx)
 	m_CommonMVPUboData.view = m_Camera.GetViewMatrix();
 	m_CommonMVPUboData.proj = m_Camera.GetProjMatrix();
 	m_CommonMVPUboData.mv_normal = glm::transpose(glm::inverse(m_CommonMVPUboData.view * m_CommonMVPUboData.model));
+	m_CommonMVPUboData.lightPovMVP = m_ShadowMapUBOData.MVPMat;
+	m_CommonMVPUboData.biasShadowMap = glm::mat4(
+		0.5, 0.0, 0.0, 0.0,
+		0.0, 0.5, 0.0, 0.0,
+		0.0, 0.0, 0.5, 0.0,
+		0.5, 0.5, 0.5, 1.0
+	);
 
 	void* uniformBufferData;
 	vkMapMemory(m_LogicalDevice, m_CommonMVPUniformBufferMemory, 0, sizeof(CommonMVPUniformBufferObject), 0, &uniformBufferData);
@@ -4681,8 +4685,17 @@ void VulkanRenderer::CreateCommonDescriptorSetLayout()
 	uboLayoutBinding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT; //只需要在vertex stage生效
 	uboLayoutBinding.pImmutableSamplers = nullptr;
 
+	//shadowMap sampler binding
+	VkDescriptorSetLayoutBinding shadowMapSamplerLayoutBinding{};
+	shadowMapSamplerLayoutBinding.binding = 1;
+	shadowMapSamplerLayoutBinding.descriptorCount = 1;
+	shadowMapSamplerLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+	shadowMapSamplerLayoutBinding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT; //只用于fragment stage
+	shadowMapSamplerLayoutBinding.pImmutableSamplers = nullptr;
+
 	std::vector<VkDescriptorSetLayoutBinding> vecDescriptorLayoutBinding = {
 		uboLayoutBinding,
+		shadowMapSamplerLayoutBinding,
 	};
 
 	VkDescriptorSetLayoutCreateInfo createInfo{};
@@ -4700,8 +4713,14 @@ void VulkanRenderer::CreateCommonDescriptorPool()
 	uboPoolSize.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
 	uboPoolSize.descriptorCount = static_cast<UINT>(m_vecSwapChainImages.size());
 
+	//shadowMap sampler
+	VkDescriptorPoolSize shadowMapSamplerPoolSize{};
+	shadowMapSamplerPoolSize.type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+	shadowMapSamplerPoolSize.descriptorCount = static_cast<UINT>(m_vecSwapChainImages.size());
+
 	std::vector<VkDescriptorPoolSize> vecPoolSize = {
 		uboPoolSize,
+		shadowMapSamplerPoolSize
 	};
 
 	VkDescriptorPoolCreateInfo poolCreateInfo{};

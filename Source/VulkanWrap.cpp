@@ -407,8 +407,24 @@ namespace DZW_VulkanWrap
 		uboWrite.descriptorCount = 1;
 		uboWrite.pBufferInfo = &descriptorBufferInfo;
 
+		//shadowMap sampler
+		VkDescriptorImageInfo shadowMapImageInfo{};
+		shadowMapImageInfo.imageLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
+		shadowMapImageInfo.imageView = m_pRenderer->m_ShadowMapDepthImageView;
+		shadowMapImageInfo.sampler = m_pRenderer->m_ShadowMapSampler;
+
+		VkWriteDescriptorSet shadowMapSamplerWrite{};
+		shadowMapSamplerWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+		shadowMapSamplerWrite.dstSet = m_DescriptorSet;
+		shadowMapSamplerWrite.dstBinding = 1;
+		shadowMapSamplerWrite.dstArrayElement = 0;
+		shadowMapSamplerWrite.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+		shadowMapSamplerWrite.descriptorCount = 1;
+		shadowMapSamplerWrite.pImageInfo = &shadowMapImageInfo;
+
 		std::vector<VkWriteDescriptorSet> vecDescriptorWrite = {
 			uboWrite,
+			shadowMapSamplerWrite
 		};
 
 		vkUpdateDescriptorSets(m_pRenderer->m_LogicalDevice, static_cast<UINT>(vecDescriptorWrite.size()), vecDescriptorWrite.data(), 0, nullptr);

@@ -150,8 +150,12 @@ void UI::Draw()
     ImGui::Begin("Camera");
     auto& pos = m_pRenderer->m_Camera.GetPosition();
     auto& focalPoint = m_pRenderer->m_Camera.GetFocalPoint();
+    auto upDirection = m_pRenderer->m_Camera.GetUpDirection();
+
     ImGui::Text("Pos:   %.2f, %.2f, %.2f", pos.x, pos.y, pos.z);
     ImGui::Text("Focus: %.2f, %.2f, %.2f", focalPoint.x, focalPoint.y, focalPoint.z);
+    ImGui::Text("Up Dir: %.2f, %.2f, %.2f", upDirection.x, upDirection.y, upDirection.z);
+
     ImGui::Text("Vertical FOV: %.1f", m_pRenderer->m_Camera.GetVerticalFOV());
     ImGui::Text("Yaw:    %.1f", fmod(m_pRenderer->m_Camera.GetYaw(), 360.f));
     ImGui::Text("Pitch:  %.1f", fmod(m_pRenderer->m_Camera.GetPitch(), 360.f));
