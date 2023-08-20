@@ -34,9 +34,9 @@ void main()
 	vec3 diffuse = lightColor * materialDiffuse * max(0.0, dot(inNormal, Light));
 	vec3 specular = lightColor * materialSpecular * pow(max(0.0, dot(inNormal, Half)), 1.0);
 
-    float lightPovDepth = texture(shadowMapSampler, inShadowCoord.xy).z;
-    //float IsNotInShadow = (inShadowCoord.z < lightPovDepth) ? 0.0 : 1.0;
-    float IsNotInShadow = 0.0;
+    float lightPovDepth = texture(shadowMapSampler, inShadowCoord.xy).r;
+    float IsNotInShadow = (inShadowCoord.z < lightPovDepth) ? 0.0 : 1.0;
+    //float IsNotInShadow = 0.0;
 
 	outColor = vec4(ambient + diffuse * IsNotInShadow + specular * IsNotInShadow, 1.0);
 }

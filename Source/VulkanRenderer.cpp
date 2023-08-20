@@ -1916,8 +1916,8 @@ void VulkanRenderer::SetupCamera()
 		static_cast<float>(m_SwapChainExtent2D.height), 
 		0.1f, 10000.f,
 		m_pWindow, 
-		{ 0.f, 0.f, -20.f }, 
-		{ 0.f, 0.f, 0.f }, 
+		{ 1.26, -3.43, 10.92 }, 
+		{ 1.11, -0.61, -8.88 }, 
 		true);
 
 	glfwSetWindowUserPointer(m_pWindow, (void*)&m_Camera);
@@ -2973,7 +2973,7 @@ void VulkanRenderer::RecordCommandBuffer(VkCommandBuffer& commandBuffer, UINT ui
 		shadowMapRenderPassBeginInfo.renderPass = m_ShadowMapRenderPass;
 		shadowMapRenderPassBeginInfo.framebuffer = m_ShadowMapFrameBuffer;
 		shadowMapRenderPassBeginInfo.renderArea.offset = { 0, 0 };
-		shadowMapRenderPassBeginInfo.renderArea.extent = m_SwapChainExtent2D;
+		shadowMapRenderPassBeginInfo.renderArea.extent = m_ShadowMapExtent2D;
 		std::array<VkClearValue, 2> shadowMapAryClearColor;
 		shadowMapAryClearColor[0].color = { 1.f, 1.f, 1.f, 1.f };
 		shadowMapAryClearColor[1].depthStencil = { 1.f, 0 };
@@ -2984,15 +2984,15 @@ void VulkanRenderer::RecordCommandBuffer(VkCommandBuffer& commandBuffer, UINT ui
 		VkViewport shadowMapViewport{};
 		shadowMapViewport.x = 0.f;
 		shadowMapViewport.y = 0.f;
-		shadowMapViewport.width = static_cast<float>(m_SwapChainExtent2D.width);
-		shadowMapViewport.height = static_cast<float>(m_SwapChainExtent2D.height);
+		shadowMapViewport.width = static_cast<float>(m_ShadowMapExtent2D.width);
+		shadowMapViewport.height = static_cast<float>(m_ShadowMapExtent2D.height);
 		shadowMapViewport.minDepth = 0.f;
 		shadowMapViewport.maxDepth = 1.f;
 		vkCmdSetViewport(commandBuffer, 0, 1, &shadowMapViewport);
 
 		VkRect2D shadowMapScissor{};
 		shadowMapScissor.offset = { 0, 0 };
-		shadowMapScissor.extent = m_SwapChainExtent2D;
+		shadowMapScissor.extent = m_ShadowMapExtent2D;
 		vkCmdSetScissor(commandBuffer, 0, 1, &shadowMapScissor);
 
 		//vkCmdSetDepthBias(commandBuffer, depthBiasConstant, 0.0f, depthBiasSlope);
@@ -3415,18 +3415,18 @@ void VulkanRenderer::CreateShadowMapResource()
 void VulkanRenderer::CreateShadowMapImage()
 {
 	//Image, ImageView, Memory
-	CreateImageAndBindMemory(m_SwapChainExtent2D.width, m_SwapChainExtent2D.height,
+	CreateImageAndBindMemory(m_ShadowMapExtent2D.width, m_ShadowMapExtent2D.height,
 		1, 1, 1,
 		VK_SAMPLE_COUNT_1_BIT,
-		m_DepthFormat,
+		m_ShadowMapFormat,
 		VK_IMAGE_TILING_OPTIMAL,
 		VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, //用于sampler
 		VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
 		m_ShadowMapDepthImage, m_ShadowMapDepthImageMemory);
 
-	m_ShadowMapDepthImageView = CreateImageView(m_ShadowMapDepthImage, m_DepthFormat, VK_IMAGE_ASPECT_DEPTH_BIT, 1, 1, 1);
+	m_ShadowMapDepthImageView = CreateImageView(m_ShadowMapDepthImage, m_ShadowMapFormat, VK_IMAGE_ASPECT_DEPTH_BIT, 1, 1, 1);
 
-	ChangeImageLayout(m_ShadowMapDepthImage, m_DepthFormat,
+	ChangeImageLayout(m_ShadowMapDepthImage, m_ShadowMapFormat,
 		1, 1, 1,
 		VK_IMAGE_LAYOUT_UNDEFINED,
 		VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL);
@@ -3455,7 +3455,7 @@ void VulkanRenderer::CreateShadowMapRenderPass()
 {
 	//Render Pass
 	VkAttachmentDescription attachmentDescription{};
-	attachmentDescription.format = m_DepthFormat;
+	attachmentDescription.format = m_ShadowMapFormat;
 	attachmentDescription.samples = VK_SAMPLE_COUNT_1_BIT;
 	attachmentDescription.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
 	attachmentDescription.storeOp = VK_ATTACHMENT_STORE_OP_STORE; //保存渲染结果
@@ -3511,8 +3511,8 @@ void VulkanRenderer::CreateShadowMapFrameBuffer()
 	fbufCreateInfo.renderPass = m_ShadowMapRenderPass;
 	fbufCreateInfo.attachmentCount = 1;
 	fbufCreateInfo.pAttachments = &m_ShadowMapDepthImageView;
-	fbufCreateInfo.width = m_SwapChainExtent2D.width;
-	fbufCreateInfo.height = m_SwapChainExtent2D.height;
+	fbufCreateInfo.width = m_ShadowMapExtent2D.width;
+	fbufCreateInfo.height = m_ShadowMapExtent2D.height;
 	fbufCreateInfo.layers = 1;
 	VULKAN_ASSERT(vkCreateFramebuffer(m_LogicalDevice, &fbufCreateInfo, nullptr, &m_ShadowMapFrameBuffer), "Create shadow map frameBuffer failed");
 }
@@ -3529,16 +3529,16 @@ void VulkanRenderer::CreateShadowMapUniformBufferAndMemory()
 
 void VulkanRenderer::UpdateShaderMapUniformBuffer()
 {
-	glm::vec3 lightPos = { -13.77,-2.62, 14.48 };
-	glm::vec3 lightFocus = { 0.01f, -2.52, -0.01 };
+	glm::vec3 lightPos = {1.26, -3.43, 10.92 };
+	glm::vec3 lightFocus = {1.11, -0.61, -8.88};
 
 	glm::mat4 model = glm::translate(glm::mat4(1.f), lightPos);
-	glm::mat4 view = glm::lookAt(lightPos, lightFocus, { 0.f, 1.f, 0.f });
+	glm::mat4 view = glm::lookAt(lightPos, lightFocus, { 0.0, -1.0, -0.14 });
 	glm::mat4 proj = glm::perspective(glm::radians(45.f), 
-		(float)m_SwapChainExtent2D.width / (float)m_SwapChainExtent2D.height,
+		(float)m_ShadowMapExtent2D.width / (float)m_ShadowMapExtent2D.height,
 		0.1f, 1000.f);
 	
-	m_ShadowMapUBOData.MVPMat = model * view * proj;
+	m_ShadowMapUBOData.MVPMat = proj * view * model;
 
 	void* uniformBufferData;
 	vkMapMemory(m_LogicalDevice, m_ShadowMapUniformBufferMemory, 0, sizeof(MVPUniformBufferObject), 0, &uniformBufferData);

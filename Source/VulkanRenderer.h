@@ -562,6 +562,8 @@ private:
 	bool m_bNeedResize = false;
 
 	//Shadow
+	VkExtent2D m_ShadowMapExtent2D = { 2048, 2048 };
+	VkFormat m_ShadowMapFormat = VK_FORMAT_D16_UNORM;
 	VkRenderPass m_ShadowMapRenderPass;
 	VkImage m_ShadowMapDepthImage;
 	VkImageView m_ShadowMapDepthImageView;

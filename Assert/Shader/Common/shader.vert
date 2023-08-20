@@ -27,8 +27,8 @@ void main()
 	outColor = inColor;
 
 	vec4 clipPos = mvpUBO.lightPovMVP * vec4(inPosition, 1.0);
-	vec3 ndcPos = clipPos.xyz / clipPos.w;
-	outShadowCoord = (mvpUBO.bias * vec4(ndcPos, 1.0)).xyz;
+	vec4 ndcPos = clipPos / clipPos.w;
+	outShadowCoord = (mvpUBO.bias * ndcPos).xyz;
 
     gl_Position = mvpUBO.proj * mvpUBO.view * mvpUBO.model * vec4(inPosition, 1.0);
 }
