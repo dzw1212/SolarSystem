@@ -224,6 +224,17 @@ private:
 
 	void WindowResize();
 
+	void CreatePointLightResource();
+	void CreatePointLightUniformBufferAndMemory();
+	void UpdatePointLight();
+	void CreatePointLightShaderModule();
+	void CreatePointLightDescriptorSetLayout();
+	void CreatePointLightDescriptorPool();
+	void CreatePointLightDescriptorSet();
+	void CreatePointLightPipelineLayout();
+	void CreatePointLightPipeline();
+
+
 	void CreateShadowMapResource();
 	void CreateShadowMapImage();
 	void CreateShadowMapSampler();
@@ -307,6 +318,7 @@ public:
 		glm::mat4 mv_normal; //用于将normal转到视图空间
 		glm::mat4 lightPovMVP; //光源位置的MVP矩阵
 		glm::mat4 biasShadowMap; //用于将[-1,1]的坐标转为适合shadowMap贴图的[0,1]坐标
+		glm::vec3 lightPos;
 	};
 
 	void CreateCommonShader();
@@ -561,6 +573,19 @@ private:
 	UINT m_uiCurFrameIdx;
 
 	bool m_bNeedResize = false;
+
+	//Point Light
+	DZW_LightWrap::BlinnPhongPointLight m_PointLight;
+	std::unique_ptr<DZW_VulkanWrap::Model> m_PointLightModel;
+	VkBuffer m_PointLightUniformBuffer;
+	VkDeviceMemory m_PointLightUniformBufferMemory;
+	MVPUniformBufferObject m_PointLightUBOData;
+	std::unordered_map<VkShaderStageFlagBits, VkShaderModule> m_mapPointLightShaderModule;
+	VkPipeline m_PointLightPipeline;
+	VkPipelineLayout m_PointLightPipelineLayout;
+	VkDescriptorPool m_PointLightDescriptorPool;
+	VkDescriptorSetLayout m_PointLightDescriptorSetLayout;
+	VkDescriptorSet m_PointLightDescriptorSet;
 
 	//Shadow
 	VkExtent2D m_ShadowMapExtent2D = { 2048, 2048 };

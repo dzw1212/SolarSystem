@@ -78,6 +78,8 @@ void VulkanRenderer::Init()
 	
 	CreateSyncObjects();
 
+	CreatePointLightResource();
+
 	CreateShadowMapResource();
 
 	SetupCamera();
@@ -2928,6 +2930,8 @@ void VulkanRenderer::CreateSkyboxDescriptorSets()
 
 void VulkanRenderer::RecordCommandBuffer(VkCommandBuffer& commandBuffer, UINT uiIdx)
 {
+	UpdatePointLight();
+
 	//在Record之前更新UBO
 
 	//UpdateUniformBuffer(m_uiCurFrameIdx);
@@ -3395,6 +3399,79 @@ void VulkanRenderer::WindowResize()
 	CreateCommandBuffers();
 }
 
+void VulkanRenderer::CreatePointLightResource()
+{
+	CreatePointLightUniformBufferAndMemory();
+	CreatePointLightShaderModule();
+	CreatePointLightDescriptorSetLayout();
+	CreatePointLightDescriptorPool();
+	CreatePointLightDescriptorSet();
+	CreatePointLightPipelineLayout();
+	CreatePointLightPipeline();
+}
+
+void VulkanRenderer::CreatePointLightUniformBufferAndMemory()
+{
+	CreateBufferAndBindMemory(sizeof(MVPUniformBufferObject),
+		VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
+		VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+		m_PointLightUniformBuffer,
+		m_PointLightUniformBufferMemory
+	);
+}
+
+void VulkanRenderer::UpdatePointLight()
+{
+	static auto lastTime = std::chrono::high_resolution_clock::now();
+	auto currentTime = std::chrono::high_resolution_clock::now();
+
+	float deltaTime = std::chrono::duration<float, std::chrono::seconds::period>(currentTime - lastTime).count();
+
+	lastTime = currentTime;
+
+	static float fDegree = 0.f;
+	fDegree += deltaTime * 10.f;
+
+	auto rotate = glm::rotate(glm::mat4(1.f), glm::radians(fDegree), { 0.0, 1.0, 0.0 });
+	m_PointLight.color = { 1.0, 1.0, 1.0, 1.0 };
+	m_PointLight.position = glm::vec3(rotate * glm::vec4(0.0, 0.0, 10.0, 1.0));
+
+	auto model = glm::translate(glm::mat4(1.f), m_PointLight.position);
+	auto view = m_Camera.GetViewMatrix();
+	auto proj = m_Camera.GetProjMatrix();
+
+	m_PointLightUBOData.mvp = proj * view * model;
+
+	void* uniformBufferData;
+	vkMapMemory(m_LogicalDevice, m_PointLightUniformBufferMemory, 0, sizeof(MVPUniformBufferObject), 0, &uniformBufferData);
+	memcpy(uniformBufferData, &m_PointLightUBOData, sizeof(MVPUniformBufferObject));
+	vkUnmapMemory(m_LogicalDevice, m_PointLightUniformBufferMemory);
+}
+
+void VulkanRenderer::CreatePointLightShaderModule()
+{
+}
+
+void VulkanRenderer::CreatePointLightDescriptorSetLayout()
+{
+}
+
+void VulkanRenderer::CreatePointLightDescriptorPool()
+{
+}
+
+void VulkanRenderer::CreatePointLightDescriptorSet()
+{
+}
+
+void VulkanRenderer::CreatePointLightPipelineLayout()
+{
+}
+
+void VulkanRenderer::CreatePointLightPipeline()
+{
+}
+
 void VulkanRenderer::CreateShadowMapResource()
 {
 	CreateShadowMapImage();
@@ -3402,7 +3479,6 @@ void VulkanRenderer::CreateShadowMapResource()
 	CreateShadowMapRenderPass();
 	CreateShadowMapFrameBuffer();
 	CreateShadowMapUniformBufferAndMemory();
-	UpdateShadowMapUniformBuffer();
 	CreateShadowMapShaderModule();
 	CreateShadowMapDescriptorSetLayout();
 	CreateShadowMapDescriptorPool();
@@ -3528,11 +3604,11 @@ void VulkanRenderer::CreateShadowMapUniformBufferAndMemory()
 
 void VulkanRenderer::UpdateShadowMapUniformBuffer()
 {
-	glm::vec3 lightPos = { -5.53, -7.17, 5.96 };
-	glm::vec3 lightFocus = { 5.44, 1.99, -8.03 };
+	glm::vec3 lightPos = m_PointLight.position;
+	glm::vec3 lightFocus = { 0.0, 0.0, 0.0 };
 
 	glm::mat4 model = glm::mat4(1.f);
-	glm::mat4 view = glm::lookAt(lightPos, lightFocus, { -0.28, 0.89, 0.36 });
+	glm::mat4 view = glm::lookAt(lightPos, lightFocus, { 0.0, 1.0, 0.0 });
 	glm::mat4 proj = glm::perspective(glm::radians(45.f), 
 		(float)m_SwapChainExtent2D.width / (float)m_SwapChainExtent2D.height,
 		0.1f, 1000.f);
@@ -4667,6 +4743,7 @@ void VulkanRenderer::UpdateCommonMVPUniformBuffer(UINT uiIdx)
 		0.0, 0.0, 0.5, 0.0,
 		0.5, 0.5, 0.5, 1.0
 	);
+	m_CommonMVPUboData.lightPos = m_PointLight.position;
 
 	void* uniformBufferData;
 	vkMapMemory(m_LogicalDevice, m_CommonMVPUniformBufferMemory, 0, sizeof(CommonMVPUniformBufferObject), 0, &uniformBufferData);

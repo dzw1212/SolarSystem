@@ -4,6 +4,7 @@ layout (location = 0) in vec3 inPosition;
 layout (location = 1) in vec3 inNormal;
 layout (location = 2) in vec3 inColor;
 layout (location = 3) in vec4 inShadowCoord;
+layout (location = 4) in vec3 inLightPos;
 
 layout (location = 0) out vec4 outColor;
 
@@ -12,7 +13,7 @@ layout (binding = 1) uniform sampler2D shadowMapSampler;
 void main() 
 {
     vec3 lightColor = vec3(1.0, 1.0, 1.0);
-    vec3 lightPosition = vec3(0.0, 0.0, 0.0); //与摄像机一致
+    vec3 lightPosition = inLightPos;
     float lightIntensify = 1.0;
     float constant = 10.0;
     float linear = 0.09;
@@ -38,14 +39,14 @@ void main()
     // float IsNotInShadow = (inShadowCoord.z < lightPovDepth) ? 0.0 : 1.0;
     // //float IsNotInShadow = 0.0;
 
-    outColor = vec4(ambient + diffuse + specular, 1.0);
+    
 
     vec3 shadowCoord = inShadowCoord.xyz / inShadowCoord.w;
-    //shadowCoord = shadowCoord * 0.5 + 0.5;
+    shadowCoord = shadowCoord * 0.5 + 0.5;
     float closetDepth = texture(shadowMapSampler, shadowCoord.xy).r;
     float currentDepth = shadowCoord.z;
-    if (closetDepth > currentDepth)
-        outColor = vec4(1.0, 0.0, 0.0, 1.0);
 
-	
+    float NotInShadow = currentDepth < closetDepth ? 1.0 : 0.0;
+
+	outColor = vec4(ambient + diffuse * NotInShadow + specular * NotInShadow, 1.0);
 }
