@@ -269,9 +269,6 @@ namespace DZW_VulkanWrap
 		virtual ModelType GetType() { return ModelType::MODEL_TYPE_OBJ; }
 
 		virtual void Draw(VkCommandBuffer& commandBuffer, VkPipeline& pipeline, VkPipelineLayout& pipelineLayout, VkDescriptorSet* pDescriptorSet = nullptr);
-	
-	private: 
-		VkDescriptorSet m_DescriptorSet;
 	};
 
 	class GLTFModel : public Model

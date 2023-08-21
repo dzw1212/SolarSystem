@@ -94,6 +94,7 @@ void VulkanRenderer::Init()
 
 	CreateCommonDescriptorSetLayout();
 	CreateCommonDescriptorPool();
+	CreateCommonDescriptorSet();
 
 	CreateCommonGraphicPipelineLayout();
 	CreateCommonGraphicPipeline();
@@ -1916,9 +1917,9 @@ void VulkanRenderer::SetupCamera()
 		static_cast<float>(m_SwapChainExtent2D.height), 
 		0.1f, 10000.f,
 		m_pWindow, 
-		{ 1.26, -3.43, 10.92 }, 
-		{ 1.11, -0.61, -8.88 }, 
-		true);
+		{ -5.53, -7.17, 5.96 }, 
+		{ 5.44, 1.99, -8.03 }, 
+		false);
 
 	glfwSetWindowUserPointer(m_pWindow, (void*)&m_Camera);
 
@@ -2931,7 +2932,7 @@ void VulkanRenderer::RecordCommandBuffer(VkCommandBuffer& commandBuffer, UINT ui
 
 	//UpdateUniformBuffer(m_uiCurFrameIdx);
 
-	UpdateShaderMapUniformBuffer();
+	UpdateShadowMapUniformBuffer();
 
 	UpdateCommonMVPUniformBuffer(m_uiCurFrameIdx);
 
@@ -3168,7 +3169,7 @@ void VulkanRenderer::RecordCommandBuffer(VkCommandBuffer& commandBuffer, UINT ui
 		//	vkCmdDrawIndexed(commandBuffer, static_cast<UINT>(m_Model.m_vecIndices.size()), 1, 0, 0, 0);
 		//}
 
-		m_testObjModel->Draw(commandBuffer, m_CommonGraphicPipeline, m_CommonGraphicPipelineLayout);
+		m_testObjModel->Draw(commandBuffer, m_CommonGraphicPipeline, m_CommonGraphicPipelineLayout, &m_CommonDescriptorSet);
 
 		//m_testGLTFModel->Draw(commandBuffer, m_GLTFGraphicPipeline, m_GLTFGraphicPipelineLayout);
 
@@ -3401,15 +3402,13 @@ void VulkanRenderer::CreateShadowMapResource()
 	CreateShadowMapRenderPass();
 	CreateShadowMapFrameBuffer();
 	CreateShadowMapUniformBufferAndMemory();
-	UpdateShaderMapUniformBuffer();
+	UpdateShadowMapUniformBuffer();
 	CreateShadowMapShaderModule();
 	CreateShadowMapDescriptorSetLayout();
 	CreateShadowMapDescriptorPool();
 	CreateShadowMapDescriptorSet();
 	CreateShadowMapPipelineLayout();
 	CreateShadowMapPipeline();
-
-	
 }
 
 void VulkanRenderer::CreateShadowMapImage()
@@ -3527,18 +3526,18 @@ void VulkanRenderer::CreateShadowMapUniformBufferAndMemory()
 	);
 }
 
-void VulkanRenderer::UpdateShaderMapUniformBuffer()
+void VulkanRenderer::UpdateShadowMapUniformBuffer()
 {
-	glm::vec3 lightPos = {1.26, -3.43, 10.92 };
-	glm::vec3 lightFocus = {1.11, -0.61, -8.88};
+	glm::vec3 lightPos = { -5.53, -7.17, 5.96 };
+	glm::vec3 lightFocus = { 5.44, 1.99, -8.03 };
 
-	glm::mat4 model = glm::translate(glm::mat4(1.f), lightPos);
-	glm::mat4 view = glm::lookAt(lightPos, lightFocus, { 0.0, -1.0, -0.14 });
+	glm::mat4 model = glm::mat4(1.f);
+	glm::mat4 view = glm::lookAt(lightPos, lightFocus, { -0.28, 0.89, 0.36 });
 	glm::mat4 proj = glm::perspective(glm::radians(45.f), 
-		(float)m_ShadowMapExtent2D.width / (float)m_ShadowMapExtent2D.height,
+		(float)m_SwapChainExtent2D.width / (float)m_SwapChainExtent2D.height,
 		0.1f, 1000.f);
 	
-	m_ShadowMapUBOData.MVPMat = proj * view * model;
+	m_ShadowMapUBOData.mvp = proj * view * model;
 
 	void* uniformBufferData;
 	vkMapMemory(m_LogicalDevice, m_ShadowMapUniformBufferMemory, 0, sizeof(MVPUniformBufferObject), 0, &uniformBufferData);
@@ -4661,7 +4660,7 @@ void VulkanRenderer::UpdateCommonMVPUniformBuffer(UINT uiIdx)
 	m_CommonMVPUboData.view = m_Camera.GetViewMatrix();
 	m_CommonMVPUboData.proj = m_Camera.GetProjMatrix();
 	m_CommonMVPUboData.mv_normal = glm::transpose(glm::inverse(m_CommonMVPUboData.view * m_CommonMVPUboData.model));
-	m_CommonMVPUboData.lightPovMVP = m_ShadowMapUBOData.MVPMat;
+	m_CommonMVPUboData.lightPovMVP = m_ShadowMapUBOData.mvp;
 	m_CommonMVPUboData.biasShadowMap = glm::mat4(
 		0.5, 0.0, 0.0, 0.0,
 		0.0, 0.5, 0.0, 0.0,
@@ -4730,6 +4729,54 @@ void VulkanRenderer::CreateCommonDescriptorPool()
 	poolCreateInfo.maxSets = static_cast<UINT>(m_vecSwapChainImages.size());
 
 	VULKAN_ASSERT(vkCreateDescriptorPool(m_LogicalDevice, &poolCreateInfo, nullptr, &m_CommonDescriptorPool), "Create common descriptor pool failed");
+}
+
+void VulkanRenderer::CreateCommonDescriptorSet()
+{
+	VkDescriptorSetAllocateInfo allocInfo{};
+	allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+	allocInfo.descriptorSetCount = 1;
+	allocInfo.descriptorPool = m_CommonDescriptorPool;
+	allocInfo.pSetLayouts = &m_CommonDescriptorSetLayout;
+
+	VULKAN_ASSERT(vkAllocateDescriptorSets(m_LogicalDevice, &allocInfo, &m_CommonDescriptorSet), "Allocate common desctiprot set failed");
+
+	//ubo
+	VkDescriptorBufferInfo descriptorBufferInfo{};
+	descriptorBufferInfo.buffer = m_CommonMVPUniformBuffer;
+	descriptorBufferInfo.offset = 0;
+	descriptorBufferInfo.range = sizeof(CommonMVPUniformBufferObject);
+
+	VkWriteDescriptorSet uboWrite{};
+	uboWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+	uboWrite.dstSet = m_CommonDescriptorSet;
+	uboWrite.dstBinding = 0;
+	uboWrite.dstArrayElement = 0;
+	uboWrite.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+	uboWrite.descriptorCount = 1;
+	uboWrite.pBufferInfo = &descriptorBufferInfo;
+
+	//shadowMap sampler
+	VkDescriptorImageInfo shadowMapImageInfo{};
+	shadowMapImageInfo.imageLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
+	shadowMapImageInfo.imageView = m_ShadowMapDepthImageView;
+	shadowMapImageInfo.sampler = m_ShadowMapSampler;
+
+	VkWriteDescriptorSet shadowMapSamplerWrite{};
+	shadowMapSamplerWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+	shadowMapSamplerWrite.dstSet = m_CommonDescriptorSet;
+	shadowMapSamplerWrite.dstBinding = 1;
+	shadowMapSamplerWrite.dstArrayElement = 0;
+	shadowMapSamplerWrite.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+	shadowMapSamplerWrite.descriptorCount = 1;
+	shadowMapSamplerWrite.pImageInfo = &shadowMapImageInfo;
+
+	std::vector<VkWriteDescriptorSet> vecDescriptorWrite = {
+		uboWrite,
+		shadowMapSamplerWrite,
+	};
+
+	vkUpdateDescriptorSets(m_LogicalDevice, static_cast<UINT>(vecDescriptorWrite.size()), vecDescriptorWrite.data(), 0, nullptr);
 }
 
 void VulkanRenderer::CreateCommonGraphicPipelineLayout()

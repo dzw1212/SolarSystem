@@ -230,7 +230,7 @@ private:
 	void CreateShadowMapRenderPass();
 	void CreateShadowMapFrameBuffer();
 	void CreateShadowMapUniformBufferAndMemory();
-	void UpdateShaderMapUniformBuffer();
+	void UpdateShadowMapUniformBuffer();
 	void CreateShadowMapShaderModule();
 	void CreateShadowMapDescriptorSetLayout();
 	void CreateShadowMapDescriptorPool();
@@ -316,6 +316,7 @@ public:
 
 	void CreateCommonDescriptorSetLayout();
 	void CreateCommonDescriptorPool();
+	void CreateCommonDescriptorSet();
 
 	void CreateCommonGraphicPipelineLayout();
 	void CreateCommonGraphicPipeline();
@@ -323,7 +324,7 @@ public:
 public:
 	struct MVPUniformBufferObject
 	{
-		glm::mat4 MVPMat;
+		glm::mat4 mvp;
 	};
 
 public:
@@ -593,7 +594,7 @@ private:
 
 	VkDescriptorSetLayout m_CommonDescriptorSetLayout;
 	VkDescriptorPool m_CommonDescriptorPool;
-	std::vector<VkDescriptorSet> m_vecCommonDescriptorSets;
+	VkDescriptorSet m_CommonDescriptorSet;
 
 	VkPipelineLayout m_CommonGraphicPipelineLayout;
 	VkPipeline m_CommonGraphicPipeline;

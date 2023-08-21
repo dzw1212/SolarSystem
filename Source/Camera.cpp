@@ -173,7 +173,7 @@ void Camera::UpdateProjection()
 
 void Camera::CameraRotate(const glm::vec2& delta)
 {
-	m_fYaw += delta.x * 90.f;
+	m_fYaw -= delta.x * 90.f;
 	m_fPitch += delta.y * 90.f;
 
 	m_fPitch = std::clamp(m_fPitch, -89.f, 89.f);

@@ -19,6 +19,8 @@
 // #define TINYGLTF_NOEXCEPTION // optional. disable exception handling.
 #include "tiny_gltf.h"
 
+#define VULKAN_FLIP_Y true
+
 namespace DZW_VulkanWrap
 {
 	std::unique_ptr<Texture> TextureFactor::CreateTexture(VulkanRenderer* pRenderer, const std::filesystem::path& filepath)
@@ -351,7 +353,7 @@ namespace DZW_VulkanWrap
 						vert.color = { 1.f, 1.f, 1.f };
 					
 
-					if (true) //vulkan flipY
+					if (VULKAN_FLIP_Y) //vulkan flipY
 					{
 						vert.pos.y *= -1.f;
 						vert.normal.y *= -1.f;
@@ -383,51 +385,6 @@ namespace DZW_VulkanWrap
 				m_IndexBuffer, m_IndexBufferMemory);
 			m_pRenderer->TransferBufferDataByStageBuffer(m_vecIndices.data(), indicesSize, m_IndexBuffer);
 		}
-
-		VkDescriptorSetAllocateInfo allocInfo{};
-		allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
-		allocInfo.descriptorSetCount = 1;
-		allocInfo.descriptorPool = m_pRenderer->m_CommonDescriptorPool;
-		allocInfo.pSetLayouts = &m_pRenderer->m_CommonDescriptorSetLayout;
-
-		VULKAN_ASSERT(vkAllocateDescriptorSets(m_pRenderer->m_LogicalDevice, &allocInfo, &m_DescriptorSet), "Allocate obj desctiprot sets failed");
-
-		//ubo
-		VkDescriptorBufferInfo descriptorBufferInfo{};
-		descriptorBufferInfo.buffer = m_pRenderer->m_CommonMVPUniformBuffer;
-		descriptorBufferInfo.offset = 0;
-		descriptorBufferInfo.range = sizeof(VulkanRenderer::CommonMVPUniformBufferObject);
-
-		VkWriteDescriptorSet uboWrite{};
-		uboWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-		uboWrite.dstSet = m_DescriptorSet;
-		uboWrite.dstBinding = 0;
-		uboWrite.dstArrayElement = 0;
-		uboWrite.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-		uboWrite.descriptorCount = 1;
-		uboWrite.pBufferInfo = &descriptorBufferInfo;
-
-		//shadowMap sampler
-		VkDescriptorImageInfo shadowMapImageInfo{};
-		shadowMapImageInfo.imageLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
-		shadowMapImageInfo.imageView = m_pRenderer->m_ShadowMapDepthImageView;
-		shadowMapImageInfo.sampler = m_pRenderer->m_ShadowMapSampler;
-
-		VkWriteDescriptorSet shadowMapSamplerWrite{};
-		shadowMapSamplerWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-		shadowMapSamplerWrite.dstSet = m_DescriptorSet;
-		shadowMapSamplerWrite.dstBinding = 1;
-		shadowMapSamplerWrite.dstArrayElement = 0;
-		shadowMapSamplerWrite.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-		shadowMapSamplerWrite.descriptorCount = 1;
-		shadowMapSamplerWrite.pImageInfo = &shadowMapImageInfo;
-
-		std::vector<VkWriteDescriptorSet> vecDescriptorWrite = {
-			uboWrite,
-			shadowMapSamplerWrite
-		};
-
-		vkUpdateDescriptorSets(m_pRenderer->m_LogicalDevice, static_cast<UINT>(vecDescriptorWrite.size()), vecDescriptorWrite.data(), 0, nullptr);
 	}
 
 	OBJModel::~OBJModel()
@@ -458,15 +415,6 @@ namespace DZW_VulkanWrap
 				pipelineLayout,
 				0, 1,
 				pDescriptorSet,
-				0, NULL);
-		}
-		else
-		{
-			vkCmdBindDescriptorSets(commandBuffer,
-				VK_PIPELINE_BIND_POINT_GRAPHICS,
-				pipelineLayout,
-				0, 1,
-				&m_DescriptorSet,
 				0, NULL);
 		}
 
@@ -818,7 +766,7 @@ namespace DZW_VulkanWrap
 						vert.texCoord = texCoordsBuffer ? glm::make_vec2(&texCoordsBuffer[v * 2]) : glm::vec3(0.0f);
 						vert.color = glm::vec3(1.0f);
 
-						if (true) //vulkan flipY
+						if (VULKAN_FLIP_Y) //vulkan flipY
 						{
 							vert.pos.y *= -1.f;
 							vert.normal.y *= -1.f;
