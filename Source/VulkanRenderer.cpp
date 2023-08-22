@@ -214,6 +214,8 @@ void VulkanRenderer::Clean()
 {
 	g_UI.Clean();
 
+	m_PointLightModel.reset();
+
 	//Skybox
 	m_SkyboxModel.reset();
 	m_SkyboxTexture.reset();
@@ -1919,8 +1921,8 @@ void VulkanRenderer::SetupCamera()
 		static_cast<float>(m_SwapChainExtent2D.height), 
 		0.1f, 10000.f,
 		m_pWindow, 
-		{ -5.53, -7.17, 5.96 }, 
-		{ 5.44, 1.99, -8.03 }, 
+		{ 0.0, 0.0, 10.0 }, 
+		{ 0.0, 0.0, 0.0 }, 
 		false);
 
 	glfwSetWindowUserPointer(m_pWindow, (void*)&m_Camera);
@@ -3177,6 +3179,8 @@ void VulkanRenderer::RecordCommandBuffer(VkCommandBuffer& commandBuffer, UINT ui
 
 		//m_testGLTFModel->Draw(commandBuffer, m_GLTFGraphicPipeline, m_GLTFGraphicPipelineLayout);
 
+		m_PointLightModel->Draw(commandBuffer, m_PointLightPipeline, m_PointLightPipelineLayout, &m_PointLightDescriptorSet);
+
 		g_UI.Render(uiIdx);
 
 		vkCmdEndRenderPass(commandBuffer);
@@ -3401,6 +3405,7 @@ void VulkanRenderer::WindowResize()
 
 void VulkanRenderer::CreatePointLightResource()
 {
+	m_PointLightModel = DZW_VulkanWrap::ModelFactor::CreateModel(this, "./Assert/Model/sphere_lowpoly.obj");
 	CreatePointLightUniformBufferAndMemory();
 	CreatePointLightShaderModule();
 	CreatePointLightDescriptorSetLayout();
@@ -3434,11 +3439,13 @@ void VulkanRenderer::UpdatePointLight()
 
 	auto rotate = glm::rotate(glm::mat4(1.f), glm::radians(fDegree), { 0.0, 1.0, 0.0 });
 	m_PointLight.color = { 1.0, 1.0, 1.0, 1.0 };
-	m_PointLight.position = glm::vec3(rotate * glm::vec4(0.0, 0.0, 10.0, 1.0));
+	//m_PointLight.position = glm::vec3(rotate * glm::vec4(5.0, -5.0, 5.0, 1.0));
+
+	m_PointLight.position = { 0.f, 0.f, 10.f };
 
 	auto model = glm::translate(glm::mat4(1.f), m_PointLight.position);
-	auto view = m_Camera.GetViewMatrix();
-	auto proj = m_Camera.GetProjMatrix();
+	auto& view = m_Camera.GetViewMatrix();
+	auto& proj = m_Camera.GetProjMatrix();
 
 	m_PointLightUBOData.mvp = proj * view * model;
 
@@ -3450,26 +3457,247 @@ void VulkanRenderer::UpdatePointLight()
 
 void VulkanRenderer::CreatePointLightShaderModule()
 {
+	std::unordered_map<VkShaderStageFlagBits, std::filesystem::path> mapShaderPath = {
+	{ VK_SHADER_STAGE_VERTEX_BIT,	"./Assert/Shader/PointLight/vert.spv" },
+	{ VK_SHADER_STAGE_FRAGMENT_BIT,	"./Assert/Shader/PointLight/frag.spv" },
+
+	};
+	ASSERT(mapShaderPath.size() > 0, "Detect no shader spv file");
+
+	m_mapPointLightShaderModule.clear();
+
+	for (const auto& spvPath : mapShaderPath)
+	{
+		auto shaderModule = DZW_VulkanUtils::CreateShaderModule(m_LogicalDevice, DZW_VulkanUtils::ReadShaderFile(spvPath.second));
+
+		m_mapPointLightShaderModule[spvPath.first] = shaderModule;
+	}
 }
 
 void VulkanRenderer::CreatePointLightDescriptorSetLayout()
 {
+	//MVP UBO Binding
+	VkDescriptorSetLayoutBinding MVPUBOLayoutBinding{};
+	MVPUBOLayoutBinding.binding = 0;
+	MVPUBOLayoutBinding.descriptorCount = 1;
+	MVPUBOLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+	MVPUBOLayoutBinding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+	MVPUBOLayoutBinding.pImmutableSamplers = nullptr;
+
+	std::vector<VkDescriptorSetLayoutBinding> vecDescriptorLayoutBinding = {
+		MVPUBOLayoutBinding,
+	};
+
+	VkDescriptorSetLayoutCreateInfo createInfo{};
+	createInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+	createInfo.bindingCount = static_cast<UINT>(vecDescriptorLayoutBinding.size());
+	createInfo.pBindings = vecDescriptorLayoutBinding.data();
+
+	VULKAN_ASSERT(vkCreateDescriptorSetLayout(m_LogicalDevice, &createInfo, nullptr, &m_PointLightDescriptorSetLayout), "Create point light descriptor layout failed");
 }
 
 void VulkanRenderer::CreatePointLightDescriptorPool()
 {
+	VkDescriptorPoolSize MVPUBOPoolSize{};
+	MVPUBOPoolSize.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+	MVPUBOPoolSize.descriptorCount = 1;
+
+	std::vector<VkDescriptorPoolSize> vecPoolSize = {
+		MVPUBOPoolSize,
+	};
+
+	VkDescriptorPoolCreateInfo poolCreateInfo{};
+	poolCreateInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+	poolCreateInfo.poolSizeCount = static_cast<UINT>(vecPoolSize.size());
+	poolCreateInfo.pPoolSizes = vecPoolSize.data();
+	poolCreateInfo.maxSets = 1;
+
+	VULKAN_ASSERT(vkCreateDescriptorPool(m_LogicalDevice, &poolCreateInfo, nullptr, &m_PointLightDescriptorPool), "Create point light descriptor pool failed");
 }
 
 void VulkanRenderer::CreatePointLightDescriptorSet()
 {
+	VkDescriptorSetAllocateInfo allocInfo{};
+	allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+	allocInfo.descriptorSetCount = 1;
+	allocInfo.descriptorPool = m_PointLightDescriptorPool;
+	allocInfo.pSetLayouts = &m_PointLightDescriptorSetLayout;
+
+	VULKAN_ASSERT(vkAllocateDescriptorSets(m_LogicalDevice, &allocInfo, &m_PointLightDescriptorSet), "Allocate point light desctiprot sets failed");
+
+	VkDescriptorBufferInfo MVPDescriptorBufferInfo{};
+	MVPDescriptorBufferInfo.buffer = m_PointLightUniformBuffer;
+	MVPDescriptorBufferInfo.offset = 0;
+	MVPDescriptorBufferInfo.range = sizeof(MVPUniformBufferObject);
+
+	VkWriteDescriptorSet MVPUBOWrite{};
+	MVPUBOWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+	MVPUBOWrite.dstSet = m_PointLightDescriptorSet;
+	MVPUBOWrite.dstBinding = 0;
+	MVPUBOWrite.dstArrayElement = 0;
+	MVPUBOWrite.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+	MVPUBOWrite.descriptorCount = 1;
+	MVPUBOWrite.pBufferInfo = &MVPDescriptorBufferInfo;
+
+	std::vector<VkWriteDescriptorSet> vecDescriptorWrite = {
+		MVPUBOWrite,
+	};
+
+	vkUpdateDescriptorSets(m_LogicalDevice, static_cast<UINT>(vecDescriptorWrite.size()), vecDescriptorWrite.data(), 0, nullptr);
 }
 
 void VulkanRenderer::CreatePointLightPipelineLayout()
 {
+	VkPipelineLayoutCreateInfo pipelineLayoutCreateInfo{};
+	pipelineLayoutCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+	pipelineLayoutCreateInfo.setLayoutCount = 1;
+	pipelineLayoutCreateInfo.pSetLayouts = &m_PointLightDescriptorSetLayout;
+	pipelineLayoutCreateInfo.pushConstantRangeCount = 0;
+	pipelineLayoutCreateInfo.pPushConstantRanges = nullptr;
+
+	VULKAN_ASSERT(vkCreatePipelineLayout(m_LogicalDevice, &pipelineLayoutCreateInfo, nullptr, &m_PointLightPipelineLayout), "Create point light pipeline layout failed");
 }
 
 void VulkanRenderer::CreatePointLightPipeline()
 {
+	/****************************可编程管线*******************************/
+	VkPipelineShaderStageCreateInfo vertShaderStageCreateInfo{};
+	vertShaderStageCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+	vertShaderStageCreateInfo.stage = VK_SHADER_STAGE_VERTEX_BIT;
+	vertShaderStageCreateInfo.module = m_mapPointLightShaderModule.at(VK_SHADER_STAGE_VERTEX_BIT); //Bytecode
+	vertShaderStageCreateInfo.pName = "main"; //要invoke的函数
+
+	VkPipelineShaderStageCreateInfo fragShaderStageCreateInfo{};
+	fragShaderStageCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+	fragShaderStageCreateInfo.stage = VK_SHADER_STAGE_FRAGMENT_BIT;
+	fragShaderStageCreateInfo.module = m_mapPointLightShaderModule.at(VK_SHADER_STAGE_FRAGMENT_BIT); //Bytecode
+	fragShaderStageCreateInfo.pName = "main"; //要invoke的函数
+
+	VkPipelineShaderStageCreateInfo shaderStageCreateInfos[] = {
+		vertShaderStageCreateInfo,
+		fragShaderStageCreateInfo,
+	};
+
+	/*****************************固定管线*******************************/
+
+	//-----------------------Dynamic State--------------------------//
+	VkPipelineDynamicStateCreateInfo dynamicStateCreateInfo{};
+	dynamicStateCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO;
+	std::vector<VkDynamicState> vecDynamicStates = {
+		VK_DYNAMIC_STATE_VIEWPORT,
+		VK_DYNAMIC_STATE_SCISSOR,
+	};
+	dynamicStateCreateInfo.dynamicStateCount = static_cast<UINT>(vecDynamicStates.size());
+	dynamicStateCreateInfo.pDynamicStates = vecDynamicStates.data();
+
+	//-----------------------Vertex Input State--------------------------//
+	auto bindingDescription = Vertex3D::GetBindingDescription();
+	auto attributeDescriptions = Vertex3D::GetAttributeDescriptions();
+	VkPipelineVertexInputStateCreateInfo vertexInputCreateInfo{};
+	vertexInputCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
+	vertexInputCreateInfo.vertexBindingDescriptionCount = 1;
+	vertexInputCreateInfo.pVertexBindingDescriptions = &bindingDescription;
+	vertexInputCreateInfo.vertexAttributeDescriptionCount = static_cast<UINT>(attributeDescriptions.size());
+	vertexInputCreateInfo.pVertexAttributeDescriptions = attributeDescriptions.data();
+
+	//-----------------------Input Assembly State------------------------//
+	VkPipelineInputAssemblyStateCreateInfo inputAssemblyCreateInfo{};
+	inputAssemblyCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
+	inputAssemblyCreateInfo.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+	inputAssemblyCreateInfo.primitiveRestartEnable = VK_FALSE;
+
+
+	//-----------------------Viewport State--------------------------//
+	VkPipelineViewportStateCreateInfo viewportStateCreateInfo{};
+	viewportStateCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
+	viewportStateCreateInfo.viewportCount = 1;
+	viewportStateCreateInfo.scissorCount = 1;
+
+	//-----------------------Raserization State--------------------------//
+	VkPipelineRasterizationStateCreateInfo rasterizationStateCreateInfo{};
+	rasterizationStateCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
+	rasterizationStateCreateInfo.depthClampEnable = VK_FALSE;	//开启后，超过远近平面的部分会被截断在远近平面上，而不是丢弃
+	rasterizationStateCreateInfo.rasterizerDiscardEnable = VK_FALSE;	//开启后，禁止所有图元经过光栅化器
+	rasterizationStateCreateInfo.polygonMode = VK_POLYGON_MODE_FILL;	//图元模式，可以是FILL、LINE、POINT
+	rasterizationStateCreateInfo.lineWidth = 1.f;	//指定光栅化后的线段宽度
+	rasterizationStateCreateInfo.cullMode = VK_CULL_MODE_NONE;
+	rasterizationStateCreateInfo.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE; //顶点序，可以是顺时针cw或逆时针ccw
+	rasterizationStateCreateInfo.depthBiasEnable = VK_FALSE; //深度偏移，一般用于Shaodw Map中避免阴影痤疮
+	rasterizationStateCreateInfo.depthBiasConstantFactor = 0.f;
+	rasterizationStateCreateInfo.depthBiasClamp = 0.f;
+	rasterizationStateCreateInfo.depthBiasSlopeFactor = 0.f;
+
+	//-----------------------Multisample State--------------------------//
+	VkPipelineMultisampleStateCreateInfo multisamplingStateCreateInfo{};
+	multisamplingStateCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
+	multisamplingStateCreateInfo.sampleShadingEnable = VK_FALSE;
+	multisamplingStateCreateInfo.minSampleShading = 0.8f;
+	multisamplingStateCreateInfo.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
+	multisamplingStateCreateInfo.minSampleShading = 1.f;
+	multisamplingStateCreateInfo.pSampleMask = nullptr;
+	multisamplingStateCreateInfo.alphaToCoverageEnable = VK_FALSE;
+	multisamplingStateCreateInfo.alphaToOneEnable = VK_FALSE;
+
+	//-----------------------Depth Stencil State--------------------------//
+	VkPipelineDepthStencilStateCreateInfo depthStencilStateCreateInfo{};
+	depthStencilStateCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
+	depthStencilStateCreateInfo.depthTestEnable = VK_TRUE;
+	depthStencilStateCreateInfo.depthWriteEnable = VK_TRUE;
+	depthStencilStateCreateInfo.depthCompareOp = VK_COMPARE_OP_LESS_OR_EQUAL;
+	depthStencilStateCreateInfo.depthBoundsTestEnable = VK_FALSE;
+	depthStencilStateCreateInfo.minDepthBounds = 0.f;
+	depthStencilStateCreateInfo.maxDepthBounds = 1.f;
+	depthStencilStateCreateInfo.stencilTestEnable = VK_FALSE;
+	depthStencilStateCreateInfo.front = {};
+	depthStencilStateCreateInfo.back = {};
+
+	//-----------------------Color Blend State--------------------------//
+	VkPipelineColorBlendStateCreateInfo colorBlendStateCreateInfo{};
+	colorBlendStateCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
+	colorBlendStateCreateInfo.logicOpEnable = VK_FALSE;
+	colorBlendStateCreateInfo.logicOp = VK_LOGIC_OP_COPY;
+	colorBlendStateCreateInfo.attachmentCount = 1;
+
+	VkPipelineColorBlendAttachmentState colorBlendAttachment{};
+	colorBlendAttachment.colorWriteMask =
+		VK_COLOR_COMPONENT_R_BIT
+		| VK_COLOR_COMPONENT_G_BIT
+		| VK_COLOR_COMPONENT_B_BIT
+		| VK_COLOR_COMPONENT_A_BIT;
+	colorBlendAttachment.blendEnable = VK_FALSE;
+	colorBlendAttachment.srcColorBlendFactor = VK_BLEND_FACTOR_ONE;
+	colorBlendAttachment.dstColorBlendFactor = VK_BLEND_FACTOR_ZERO;
+	colorBlendAttachment.colorBlendOp = VK_BLEND_OP_ADD;
+	colorBlendAttachment.srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
+	colorBlendAttachment.dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO;
+	colorBlendAttachment.alphaBlendOp = VK_BLEND_OP_ADD;
+
+	colorBlendStateCreateInfo.pAttachments = &colorBlendAttachment;
+	colorBlendStateCreateInfo.blendConstants[0] = 0.f;
+	colorBlendStateCreateInfo.blendConstants[1] = 0.f;
+	colorBlendStateCreateInfo.blendConstants[2] = 0.f;
+	colorBlendStateCreateInfo.blendConstants[3] = 0.f;
+
+	/***********************************************************************/
+	VkGraphicsPipelineCreateInfo pipelineCreateInfo{};
+	pipelineCreateInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
+	pipelineCreateInfo.stageCount = static_cast<UINT>(m_mapPointLightShaderModule.size());
+	pipelineCreateInfo.pStages = shaderStageCreateInfos;
+	pipelineCreateInfo.pDynamicState = &dynamicStateCreateInfo;
+	pipelineCreateInfo.pVertexInputState = &vertexInputCreateInfo;
+	pipelineCreateInfo.pInputAssemblyState = &inputAssemblyCreateInfo;
+	pipelineCreateInfo.pViewportState = &viewportStateCreateInfo;
+	pipelineCreateInfo.pRasterizationState = &rasterizationStateCreateInfo;
+	pipelineCreateInfo.pMultisampleState = &multisamplingStateCreateInfo;
+	pipelineCreateInfo.pDepthStencilState = &depthStencilStateCreateInfo;
+	pipelineCreateInfo.pColorBlendState = &colorBlendStateCreateInfo;
+	pipelineCreateInfo.layout = m_PointLightPipelineLayout;
+	pipelineCreateInfo.renderPass = m_RenderPass;
+	pipelineCreateInfo.subpass = 0;
+	pipelineCreateInfo.basePipelineHandle = VK_NULL_HANDLE;
+	pipelineCreateInfo.basePipelineIndex = -1;
+
+	VULKAN_ASSERT(vkCreateGraphicsPipelines(m_LogicalDevice, VK_NULL_HANDLE, 1, &pipelineCreateInfo, nullptr, &m_PointLightPipeline), "Create point light pipeline failed");
 }
 
 void VulkanRenderer::CreateShadowMapResource()
@@ -3610,7 +3838,7 @@ void VulkanRenderer::UpdateShadowMapUniformBuffer()
 	glm::mat4 model = glm::mat4(1.f);
 	glm::mat4 view = glm::lookAt(lightPos, lightFocus, { 0.0, 1.0, 0.0 });
 	glm::mat4 proj = glm::perspective(glm::radians(45.f), 
-		(float)m_SwapChainExtent2D.width / (float)m_SwapChainExtent2D.height,
+		(float)m_ShadowMapExtent2D.width / (float)m_ShadowMapExtent2D.height,
 		0.1f, 1000.f);
 	
 	m_ShadowMapUBOData.mvp = proj * view * model;
