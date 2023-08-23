@@ -22,6 +22,12 @@ layout (binding = 0) uniform MVPUniformBufferObject
 	vec3 lightPos;
 } mvpUBO;
 
+const mat4 biasMat = mat4( 
+	0.5, 0.0, 0.0, 0.0,
+	0.0, 0.5, 0.0, 0.0,
+	0.0, 0.0, 1.0, 0.0,
+	0.5, 0.5, 0.0, 1.0 );
+
 void main()
 {
     outPosition = (mvpUBO.view * mvpUBO.model * vec4(inPosition, 1.0)).xyz; //转为视图空间进行运算
@@ -33,7 +39,9 @@ void main()
 	// vec4 ndcPos = clipPos / clipPos.w;
 	// outShadowCoord = mvpUBO.bias * ndcPos;
 
-    outShadowCoord = mvpUBO.lightPovMVP * vec4(inPosition, 1.0);
+    //outShadowCoord = mvpUBO.lightPovMVP * vec4(inPosition, 1.0);
+
+	outShadowCoord = ( biasMat * mvpUBO.lightPovMVP * mvpUBO.model ) * vec4(inPosition, 1.0);
 
     gl_Position = mvpUBO.proj * mvpUBO.view * mvpUBO.model * vec4(inPosition, 1.0);
 }

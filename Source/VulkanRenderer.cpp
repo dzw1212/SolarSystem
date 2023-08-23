@@ -3441,7 +3441,7 @@ void VulkanRenderer::UpdatePointLight()
 	m_PointLight.color = { 1.0, 1.0, 1.0, 1.0 };
 	//m_PointLight.position = glm::vec3(rotate * glm::vec4(5.0, -5.0, 5.0, 1.0));
 
-	m_PointLight.position = { 0.f, 0.f, 10.f };
+	m_PointLight.position = { -20.68, -8.31, 18.88 };
 
 	auto model = glm::translate(glm::mat4(1.f), m_PointLight.position);
 	auto& view = m_Camera.GetViewMatrix();
@@ -3833,14 +3833,13 @@ void VulkanRenderer::CreateShadowMapUniformBufferAndMemory()
 void VulkanRenderer::UpdateShadowMapUniformBuffer()
 {
 	glm::vec3 lightPos = m_PointLight.position;
-	glm::vec3 lightFocus = { 0.0, 0.0, 0.0 };
+	glm::vec3 lightFocus = { -13.39, -6.80, 12.21 };
 
 	glm::mat4 model = glm::mat4(1.f);
-	glm::mat4 view = glm::lookAt(lightPos, lightFocus, { 0.0, 1.0, 0.0 });
+	glm::mat4 view = glm::lookAt(lightPos, lightFocus, { -0.11, 0.99, 0.10 });
 	glm::mat4 proj = glm::perspective(glm::radians(45.f), 
 		(float)m_ShadowMapExtent2D.width / (float)m_ShadowMapExtent2D.height,
 		0.1f, 1000.f);
-	
 	m_ShadowMapUBOData.mvp = proj * view * model;
 
 	void* uniformBufferData;
@@ -4963,6 +4962,9 @@ void VulkanRenderer::UpdateCommonMVPUniformBuffer(UINT uiIdx)
 	m_CommonMVPUboData.model = glm::translate(glm::mat4(1.f), { 0.f, 0.f, 0.f });
 	m_CommonMVPUboData.view = m_Camera.GetViewMatrix();
 	m_CommonMVPUboData.proj = m_Camera.GetProjMatrix();
+	//m_CommonMVPUboData.proj = glm::perspective(glm::radians(45.f),
+	//	(float)m_ShadowMapExtent2D.width / (float)m_ShadowMapExtent2D.height,
+	//	0.1f, 1000.f);
 	m_CommonMVPUboData.mv_normal = glm::transpose(glm::inverse(m_CommonMVPUboData.view * m_CommonMVPUboData.model));
 	m_CommonMVPUboData.lightPovMVP = m_ShadowMapUBOData.mvp;
 	m_CommonMVPUboData.biasShadowMap = glm::mat4(

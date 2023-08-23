@@ -10,11 +10,25 @@ layout (location = 0) out vec4 outColor;
 
 layout (binding = 1) uniform sampler2D shadowMapSampler;
 
+float textureProj(vec4 shadowCoord)
+{
+	float shadow = 1.0;
+	if ( shadowCoord.z > -1.0 && shadowCoord.z < 1.0 ) 
+	{
+		float dist = texture( shadowMapSampler, shadowCoord.st ).r;
+		if ( shadowCoord.w > 0.0 && dist < shadowCoord.z ) 
+		{
+			shadow = 0.1;
+		}
+	}
+	return shadow;
+}
+
 void main() 
 {
     vec3 lightColor = vec3(1.0, 1.0, 1.0);
     vec3 lightPosition = inLightPos;
-    float lightIntensify = 1.0;
+    float lightIntensify = 5.0;
     float constant = 10.0;
     float linear = 0.09;
     float quadratic = 0.032; //GPT告诉我的常用的衰减系数
@@ -41,12 +55,13 @@ void main()
 
     
 
-    vec3 shadowCoord = inShadowCoord.xyz / inShadowCoord.w;
-    shadowCoord = shadowCoord * 0.5 + 0.5;
-    float closetDepth = texture(shadowMapSampler, shadowCoord.xy).r;
-    float currentDepth = shadowCoord.z;
+    // vec3 shadowCoord = inShadowCoord.xyz / inShadowCoord.w;
+    // shadowCoord = shadowCoord * 0.5 + 0.5;
+    // float closetDepth = texture(shadowMapSampler, shadowCoord.xy).r;
+    // float currentDepth = shadowCoord.z;
 
-    float NotInShadow = currentDepth < closetDepth ? 1.0 : 0.0;
+    // float NotInShadow = currentDepth < closetDepth ? 1.0 : 0.0;
+    float InShadow = textureProj(inShadowCoord / inShadowCoord.w);
 
-	outColor = vec4(ambient + diffuse * NotInShadow + specular * NotInShadow, 1.0);
+	outColor = vec4(ambient + diffuse * InShadow + specular * InShadow, 1.0);
 }
