@@ -18,14 +18,13 @@ layout (binding = 0) uniform MVPUniformBufferObject
 	mat4 proj;
 	mat4 mv_normal; //用于将normal转到视图空间
 	mat4 lightPovMVP;
-	mat4 bias;
 	vec3 lightPos;
 } mvpUBO;
 
 const mat4 biasMat = mat4( 
 	0.5, 0.0, 0.0, 0.0,
 	0.0, 0.5, 0.0, 0.0,
-	0.0, 0.0, 1.0, 0.0,
+	0.0, 0.0, 1.0, 0.0, //不改变z值
 	0.5, 0.5, 0.0, 1.0 );
 
 void main()
@@ -35,13 +34,7 @@ void main()
 	outColor = inColor;
 	outLightPos = (mvpUBO.view * mvpUBO.model * vec4(mvpUBO.lightPos, 1.0)).xyz;
 
-	// vec4 clipPos = mvpUBO.lightPovMVP * vec4(inPosition, 1.0);
-	// vec4 ndcPos = clipPos / clipPos.w;
-	// outShadowCoord = mvpUBO.bias * ndcPos;
-
-    //outShadowCoord = mvpUBO.lightPovMVP * vec4(inPosition, 1.0);
-
-	outShadowCoord = ( biasMat * mvpUBO.lightPovMVP * mvpUBO.model ) * vec4(inPosition, 1.0);
+	outShadowCoord = (biasMat * mvpUBO.lightPovMVP) * vec4(inPosition, 1.0);
 
     gl_Position = mvpUBO.proj * mvpUBO.view * mvpUBO.model * vec4(inPosition, 1.0);
 }

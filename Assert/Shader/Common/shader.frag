@@ -49,19 +49,9 @@ void main()
 	vec3 diffuse = lightColor * materialDiffuse * max(0.0, dot(inNormal, Light));
 	vec3 specular = lightColor * materialSpecular * pow(max(0.0, dot(inNormal, Half)), 1.0);
 
-    // float lightPovDepth = texture(shadowMapSampler, inShadowCoord.xy).r;
-    // float IsNotInShadow = (inShadowCoord.z < lightPovDepth) ? 0.0 : 1.0;
-    // //float IsNotInShadow = 0.0;
+    float closetDepth = texture(shadowMapSampler, inShadowCoord.xy / inShadowCoord.w).r;
+    float IsInShadow = closetDepth < (inShadowCoord.z / inShadowCoord.w) ? 1.0 : 0.0;
+    float IsNotInShadow = 1.0 - IsInShadow;
 
-    
-
-    // vec3 shadowCoord = inShadowCoord.xyz / inShadowCoord.w;
-    // shadowCoord = shadowCoord * 0.5 + 0.5;
-    // float closetDepth = texture(shadowMapSampler, shadowCoord.xy).r;
-    // float currentDepth = shadowCoord.z;
-
-    // float NotInShadow = currentDepth < closetDepth ? 1.0 : 0.0;
-    float InShadow = textureProj(inShadowCoord / inShadowCoord.w);
-
-	outColor = vec4(ambient + diffuse * InShadow + specular * InShadow, 1.0);
+	outColor = vec4(ambient + diffuse * IsNotInShadow + specular * IsNotInShadow, 1.0);
 }

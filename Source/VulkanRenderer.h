@@ -317,7 +317,6 @@ public:
 		glm::mat4 proj;
 		glm::mat4 mv_normal; //用于将normal转到视图空间
 		glm::mat4 lightPovMVP; //光源位置的MVP矩阵
-		glm::mat4 biasShadowMap; //用于将[-1,1]的坐标转为适合shadowMap贴图的[0,1]坐标
 		glm::vec3 lightPos;
 	};
 

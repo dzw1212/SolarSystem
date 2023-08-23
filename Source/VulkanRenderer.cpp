@@ -3002,7 +3002,9 @@ void VulkanRenderer::RecordCommandBuffer(VkCommandBuffer& commandBuffer, UINT ui
 		shadowMapScissor.extent = m_ShadowMapExtent2D;
 		vkCmdSetScissor(commandBuffer, 0, 1, &shadowMapScissor);
 
-		//vkCmdSetDepthBias(commandBuffer, depthBiasConstant, 0.0f, depthBiasSlope);
+		float depthBiasConstant = 1.25f;
+		float depthBiasSlope = 1.75f;
+		vkCmdSetDepthBias(commandBuffer, depthBiasConstant, 0.0f, depthBiasSlope);
 
 		m_testObjModel->Draw(commandBuffer, m_ShadowMapPipeline, m_ShadowMapPipelineLayout, &m_ShadowMapDescriptorSet);
 
@@ -3900,6 +3902,7 @@ void VulkanRenderer::CreateShadowMapPipeline()
 	std::vector<VkDynamicState> vecDynamicStates = {
 		VK_DYNAMIC_STATE_VIEWPORT,
 		VK_DYNAMIC_STATE_SCISSOR,
+		VK_DYNAMIC_STATE_DEPTH_BIAS,
 	};
 	dynamicStateCreateInfo.dynamicStateCount = static_cast<UINT>(vecDynamicStates.size());
 	dynamicStateCreateInfo.pDynamicStates = vecDynamicStates.data();
@@ -4967,12 +4970,6 @@ void VulkanRenderer::UpdateCommonMVPUniformBuffer(UINT uiIdx)
 	//	0.1f, 1000.f);
 	m_CommonMVPUboData.mv_normal = glm::transpose(glm::inverse(m_CommonMVPUboData.view * m_CommonMVPUboData.model));
 	m_CommonMVPUboData.lightPovMVP = m_ShadowMapUBOData.mvp;
-	m_CommonMVPUboData.biasShadowMap = glm::mat4(
-		0.5, 0.0, 0.0, 0.0,
-		0.0, 0.5, 0.0, 0.0,
-		0.0, 0.0, 0.5, 0.0,
-		0.5, 0.5, 0.5, 1.0
-	);
 	m_CommonMVPUboData.lightPos = m_PointLight.position;
 
 	void* uniformBufferData;
