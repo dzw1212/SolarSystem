@@ -10,18 +10,60 @@ layout (location = 0) out vec4 outColor;
 
 layout (binding = 1) uniform sampler2D shadowMapSampler;
 
-float textureProj(vec4 shadowCoord)
+float PCF(vec4 shadowCoord, float filterSize)
 {
-	float shadow = 1.0;
-	if ( shadowCoord.z > -1.0 && shadowCoord.z < 1.0 ) 
+	filterSize = (filterSize > 0.0) ? filterSize : -1.f * filterSize; //非负数
+	filterSize = round(filterSize); //非小数
+	filterSize = (mod(filterSize, 2.0) == 0.0) ? filterSize + 1.0 : filterSize; //非偶数
+	filterSize = (filterSize < 3.0) ? 3.0 : filterSize; //最小3.0
+
+	vec2 shadowMapUV = shadowCoord.xy / shadowCoord.w;
+	vec2 texelSize = 1.0 / textureSize(shadowMapSampler, 0);
+	float currentDepth = shadowCoord.z / shadowCoord.w;
+	float closetDepth = 0.0;
+
+	float filterHalf = floor(filterSize / 2.0);
+	float shadowCount = 0.0;
+	float shadowTotal = 0.0;
+	for (float i = -filterHalf; i <= filterHalf; ++i)
 	{
-		float dist = texture( shadowMapSampler, shadowCoord.st ).r;
-		if ( shadowCoord.w > 0.0 && dist < shadowCoord.z ) 
+		for (float j = -filterHalf; j <= filterHalf; ++j)
 		{
-			shadow = 0.1;
+			closetDepth = texture(shadowMapSampler, shadowMapUV + vec2(i, j) * texelSize).r;
+			shadowTotal += (currentDepth > closetDepth) ? 1.0 : 0.0;
+			shadowCount++;
 		}
 	}
-	return shadow;
+
+	return shadowTotal / shadowCount;
+}
+
+float PCSS(vec4 shadowCoord)
+{
+	vec2 shadowMapUV = shadowCoord.xy / shadowCoord.w;
+	vec2 texelSize = 1.0 / textureSize(shadowMapSampler, 0);
+	float receiveDepth = shadowCoord.z / shadowCoord.w;
+
+	//Blocker Search
+	float searchSize = 9.0;
+	float searchHalf = floor(searchSize / 2.0);
+	float searchArea = searchSize * searchSize;
+	float blockerDepthTotal = 0.0;
+	float blockerAverage = 0.0;
+	for (float i = -searchHalf; i <= searchHalf; ++i)
+	{
+		for (float j = -searchHalf; j <= searchHalf; ++j)
+		{
+			blockerDepthTotal += texture(shadowMapSampler, shadowMapUV + vec2(i, j) * texelSize).r;
+		}
+	}
+	blockerAverage = blockerDepthTotal / searchArea;
+
+	//Penumbra Estimation
+	//假设点光源的大小为1
+	float PenumbraWidth = (receiveDepth - blockerAverage) / blockerAverage;
+
+	return (PenumbraWidth < 0.0) ? 0.0 : PCF(shadowCoord, PenumbraWidth);
 }
 
 void main() 
@@ -49,9 +91,13 @@ void main()
 	vec3 diffuse = lightColor * materialDiffuse * max(0.0, dot(inNormal, Light));
 	vec3 specular = lightColor * materialSpecular * pow(max(0.0, dot(inNormal, Half)), 1.0);
 
-    float closetDepth = texture(shadowMapSampler, inShadowCoord.xy / inShadowCoord.w).r;
-    float IsInShadow = closetDepth < (inShadowCoord.z / inShadowCoord.w) ? 1.0 : 0.0;
-    float IsNotInShadow = 1.0 - IsInShadow;
+    // float closetDepth = texture(shadowMapSampler, inShadowCoord.xy / inShadowCoord.w).r;
+    // float IsInShadow = closetDepth < (inShadowCoord.z / inShadowCoord.w) ? 1.0 : 0.0;
+    // float IsNotInShadow = 1.0 - IsInShadow;
+
+	//float IsNotInShadow = 1.0 - PCF(inShadowCoord, 7.0);
+
+	float IsNotInShadow = 1.0 - PCSS(inShadowCoord);
 
 	outColor = vec4(ambient + diffuse * IsNotInShadow + specular * IsNotInShadow, 1.0);
 }
