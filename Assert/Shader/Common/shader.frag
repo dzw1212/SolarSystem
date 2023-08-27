@@ -16,6 +16,7 @@ float PCF(vec4 shadowCoord, float filterSize)
 	filterSize = round(filterSize); //非小数
 	filterSize = (mod(filterSize, 2.0) == 0.0) ? filterSize + 1.0 : filterSize; //非偶数
 	filterSize = (filterSize < 3.0) ? 3.0 : filterSize; //最小3.0
+	//filterSize = (filterSize > 21.0) ? 21.0 : filterSize; //最大9.0
 
 	vec2 shadowMapUV = shadowCoord.xy / shadowCoord.w;
 	vec2 texelSize = 1.0 / textureSize(shadowMapSampler, 0);
@@ -45,25 +46,30 @@ float PCSS(vec4 shadowCoord)
 	float receiveDepth = shadowCoord.z / shadowCoord.w;
 
 	//Blocker Search
-	float searchSize = 9.0;
+	float searchSize = 5.0;
 	float searchHalf = floor(searchSize / 2.0);
 	float searchArea = searchSize * searchSize;
+	float blockerDepth = 0.0;
 	float blockerDepthTotal = 0.0;
 	float blockerAverage = 0.0;
 	for (float i = -searchHalf; i <= searchHalf; ++i)
 	{
 		for (float j = -searchHalf; j <= searchHalf; ++j)
 		{
-			blockerDepthTotal += texture(shadowMapSampler, shadowMapUV + vec2(i, j) * texelSize).r;
+			blockerDepth = texture(shadowMapSampler, shadowMapUV + vec2(i, j) * texelSize).r;
+			blockerDepthTotal += (blockerDepth < receiveDepth) ? blockerDepth : 0.0;
 		}
 	}
 	blockerAverage = blockerDepthTotal / searchArea;
+
+	if (blockerAverage == 0.0)
+		return 0.0;
 
 	//Penumbra Estimation
 	//假设点光源的大小为1
 	float PenumbraWidth = (receiveDepth - blockerAverage) / blockerAverage;
 
-	return (PenumbraWidth < 0.0) ? 0.0 : PCF(shadowCoord, PenumbraWidth);
+	return (PenumbraWidth < 0.0) ? 0.0 : PCF(shadowCoord, PenumbraWidth / 3.0);
 }
 
 void main() 
